@@ -681,7 +681,7 @@ O71_API o71_status_t o71_world_init
     do
     {
         o71_ref_t int_add_str_r;
-        os = o71_ics(world_p, &int_add_str_r, "int_add");
+        os = o71_ics(world_p, &int_add_str_r, "add");
         if (os) { M("fail: %s", N(os)); break; }
         A(o71_mem_obj(world_p, int_add_str_r));
 
@@ -1355,7 +1355,26 @@ O71_API o71_status_t o71_sfunc_append_get_method
     uint32_t name_istr_vx
 )
 {
-    return O71_TODO;
+    o71_insn_t * insn_p;
+    uint32_t * opnd_a;
+    uint16_t opnd_x;
+    o71_status_t os;
+
+    opnd_x = sfunc_p->opnd_n;
+    os = sfunc_alloc_code(world_p, sfunc_p, &insn_p, &opnd_a, 1, 3);
+    if (os)
+    {
+        M("sfunc=%p: alloc code failed: %s", sfunc_p, N(os));
+        return os;
+    }
+    insn_p->opcode = O71O_GET_METHOD;
+    insn_p->exc_chain_x = 0;
+    insn_p->opnd_x = opnd_x;
+    opnd_a[0] = dest_vx;
+    opnd_a[1] = obj_vx;
+    opnd_a[2] = name_istr_vx;
+
+    return O71_OK;
 }
 
 /* o71_sfunc_validate *******************************************************/
@@ -1411,6 +1430,7 @@ O71_API o71_status_t o71_sfunc_validate
             X(O71O_INIT, 1, 1, 0);
             X(O71O_RETURN, 1, 0, 0);
             X(O71O_CALL, 2, 0, 1);
+            X(O71O_GET_METHOD, 3, 0, 0);
         default:
             M("sfunc=%p: insn %zu: bad opcode 0x%X",
               sfunc_p, i, sfunc_p->insn_a[i].opcode);
@@ -1950,6 +1970,45 @@ static o71_status_t sfunc_run
                 break;
             }
 
+        case O71O_GET_METHOD:
+            {
+                uint32_t dest_vx, obj_vx, name_istr_vx;
+                o71_ref_t obj_r, name_istr_r, value_r;
+                o71_class_t * class_p;
+                o71_kvbag_loc_t loc;
+
+                dest_vx = sfunc_p->opnd_a[ox];
+                obj_vx = sfunc_p->opnd_a[ox + 1];
+                name_istr_vx = sfunc_p->opnd_a[ox + 2];
+                A(name_istr_vx < sfunc_p->var_n);
+                name_istr_r = sec_p->var_ra[name_istr_vx];
+                if (!(o71_model(world_p, name_istr_r) & O71M_STRING))
+                {
+                    M("var_%X points to ref 0x%lX which is not a string",
+                      name_istr_vx, name_istr_r);
+                    M("TODO: throw exception");
+                    return O71_TODO;
+                }
+                A(obj_vx < sfunc_p->var_n);
+                obj_r = sec_p->var_ra[obj_vx];
+                class_p = o71_class(world_p, obj_r);
+                A(class_p);
+                os = kvbag_search(world_p, &class_p->method_bag, name_istr_r,
+                                  ref_cmp, NULL, &loc);
+                if (os)
+                {
+                    A(os == O71_MISSING);
+                    M("class of obj_%lX does not have method name str_%lX",
+                      obj_r, name_istr_r);
+                    M("TODO: throw exception");
+                    return O71_TODO;
+                }
+                value_r = kvbag_get_loc_value(world_p, &class_p->method_bag, 
+                                              &loc);
+                os = set_var(world_p, &sec_p->var_ra[dest_vx], value_r);
+                AOS(os);
+            }
+
         case O71O_RETURN:
             {
                 uint32_t svx;
@@ -2019,6 +2078,8 @@ static o71_status_t sfunc_run
                 break;
             }
 
+        default:
+            M("unhandled opcode 0x%X", sfunc_p->insn_a[ix].opcode);
         l_exc:
         /* exception thrown; check to see if there's a handler for it
          * that covers current instruction */
