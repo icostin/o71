@@ -1957,6 +1957,7 @@ static o71_status_t sfunc_run
         switch (sfunc_p->insn_a[ix].opcode)
         {
         case O71O_NOP:
+            M("EXEC %04X: nop", ix);
             break;
 
         case O71O_INIT: 
@@ -1964,6 +1965,8 @@ static o71_status_t sfunc_run
                 uint32_t dvx, cx;
                 dvx = sfunc_p->opnd_a[ox];
                 cx = sfunc_p->opnd_a[ox + 1];
+                M("EXEC %04X: init v%X, c%X=o%lX", 
+                  ix, dvx, cx, sfunc_p->const_ra[cx]);
                 os = set_var(world_p, &sec_p->var_ra[dvx], 
                              sfunc_p->const_ra[cx]);
                 AOS(os);
@@ -1981,7 +1984,11 @@ static o71_status_t sfunc_run
                 obj_vx = sfunc_p->opnd_a[ox + 1];
                 name_istr_vx = sfunc_p->opnd_a[ox + 2];
                 A(name_istr_vx < sfunc_p->var_n);
+                A(obj_vx < sfunc_p->var_n);
                 name_istr_r = sec_p->var_ra[name_istr_vx];
+                M("EXEC %04X: get_method dest:v%X, obj:v%X=o%lX, name:v%X=o%lX",
+                  ix, dest_vx, obj_vx, sec_p->var_ra[obj_vx], name_istr_vx,
+                  name_istr_r);
                 if (!(o71_model(world_p, name_istr_r) & O71M_STRING))
                 {
                     M("var_%X points to ref 0x%lX which is not a string",
@@ -1989,7 +1996,6 @@ static o71_status_t sfunc_run
                     M("TODO: throw exception");
                     return O71_TODO;
                 }
-                A(obj_vx < sfunc_p->var_n);
                 obj_r = sec_p->var_ra[obj_vx];
                 class_p = o71_class(world_p, obj_r);
                 A(class_p);
@@ -2005,8 +2011,10 @@ static o71_status_t sfunc_run
                 }
                 value_r = kvbag_get_loc_value(world_p, &class_p->method_bag, 
                                               &loc);
+                M("v%X <- method ref 0x%lX", dest_vx, value_r);
                 os = set_var(world_p, &sec_p->var_ra[dest_vx], value_r);
                 AOS(os);
+                break;
             }
 
         case O71O_RETURN:
@@ -2018,6 +2026,7 @@ static o71_status_t sfunc_run
                  * decrement the ref count for the returned reference */
                 flow_p->value_r = sec_p->var_ra[svx];
                 sec_p->var_ra[svx] = O71R_NULL;
+                M("EXEC %04X: return v%X=o%lX", ix, svx, flow_p->value_r);
                 // fall into clear context
             }
         //l_finish_context:
@@ -2036,6 +2045,8 @@ static o71_status_t sfunc_run
                 uint32_t fvx, an, i;
                 fvx = sfunc_p->opnd_a[ox + 1];
                 an = sfunc_p->opnd_a[ox + 2];
+                M("EXEC %04X: call dest:v%X, func:v%X=o%lX, args:%u", 
+                  ix, sfunc_p->opnd_a[ox], fvx, sec_p->var_ra[fvx], an);
                 if (an <= sizeof(laa) / sizeof(laa[0])) aa = &laa[0];
                 else
                 {
@@ -2046,6 +2057,8 @@ static o71_status_t sfunc_run
                 {
                     aa[i] = sec_p->var_ra[sfunc_p->opnd_a[ox + 3 + i]];
                     os = o71_ref(world_p, aa[i]);
+                    M("arg[%u]: v%X=o%lX", 
+                      i, sfunc_p->opnd_a[ox + 3 + i], aa[i]);
                     AOS(os);
                 }
                 os = o71_prep_call(flow_p, sec_p->var_ra[fvx], aa, an);
@@ -2068,10 +2081,10 @@ static o71_status_t sfunc_run
         l_call_returned:
             {
                 uint32_t dvx;
-                M("call to f%lX returned: o%lX", 
-                  (long) sec_p->var_ra[sfunc_p->opnd_a[ox + 1]], 
-                  (long) flow_p->value_r);
                 dvx = sfunc_p->opnd_a[ox];
+                M("call to f%lX returned o%lX, storing into v%X", 
+                  (long) sec_p->var_ra[sfunc_p->opnd_a[ox + 1]], 
+                  (long) flow_p->value_r, dvx);
                 os = o71_deref(world_p, sec_p->var_ra[dvx]);
                 AOS(os);
                 sec_p->var_ra[dvx] = flow_p->value_r;
@@ -3187,8 +3200,8 @@ static int test ()
         if (os) TE("add3: get_method dest=v5, obj=v4, name=v5: %s\n",
                    o71_status_name(os));
 
-        os = o71_sfunc_append_call(&world, add3_p, 6, 3, 2, &arg_vxa);
-        if (os) TE("add3: call dest=v4, func=v3, v4, arg3: %s\n",
+        os = o71_sfunc_append_call(&world, add3_p, 4, 6, 2, &arg_vxa);
+        if (os) TE("add3: call dest=v4, func=v6, v4, arg3: %s\n",
                    o71_status_name(os));
         arg_vxa[0] = 4;
         arg_vxa[1] = 2;
