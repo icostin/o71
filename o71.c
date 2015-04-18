@@ -42,6 +42,10 @@
     ((_node)->clr[(_side)] = ((_node)->clr[(_side)] & 1) | (uintptr_t) (_child))
 #define OTHER_SIDE(_side) ((_side) ^ 1)
 
+/*  log2_rounded_up  */
+/**
+ *  Returns the smallest non-negative power of 2 greater or equal to n.
+ */
 static uint8_t log2_rounded_up
 (
     uintptr_t n
@@ -204,7 +208,7 @@ static o71_status_t set_missing_field
     o71_ref_t value
 );
 
-/* null_func_run ************************************************************/
+/* null_func_run */
 /**
  *  Run function that returns null.
  */
@@ -213,7 +217,10 @@ static o71_status_t null_func_run
     o71_flow_t * flow_p
 );
 
-/* int_add_call *************************************************************/
+/*  int_add_call  */
+/**
+ *  The handler for a call to the function to add ints.
+ */
 static o71_status_t int_add_call
 (
     o71_flow_t * flow_p,
@@ -222,7 +229,10 @@ static o71_status_t int_add_call
     size_t arg_n
 );
 
-/* str_intern_cmp ***********************************************************/
+/*  str_intern_cmp  */
+/**
+ *  Compares two strings as ordered in the intern bag.
+ */
 static o71_status_t str_intern_cmp
 (
     o71_world_t * world_p,
@@ -231,14 +241,20 @@ static o71_status_t str_intern_cmp
     void * ctx
 );
 
-/* str_finish ***************************************************************/
+/*  str_finish  */
+/**
+ *  Uninitializer for strings.
+ */
 static o71_status_t str_finish
 (
     o71_world_t * world_p,
     o71_ref_t obj_r
 );
 
-/* sfunc_call ***************************************************************/
+/*  sfunc_call  */
+/**
+ *  Handler for calls to scripted functions.
+ */
 static o71_status_t sfunc_call
 (
     o71_flow_t * flow_p,
@@ -247,7 +263,10 @@ static o71_status_t sfunc_call
     size_t arg_n
 );
 
-/* sfunc_run ****************************************************************/
+/*  sfunc_run  */
+/**
+ *  Handler for the run stage of a scripted function.
+ */
 static o71_status_t sfunc_run
 (
     o71_flow_t * flow_p
@@ -480,6 +499,61 @@ static o71_status_t kvbag_put
     void * ctx
 );
 
+/*  merge_sorted_refs  */
+/**
+ *  Reallocates the destination array of sorted refs and inserts source 
+ *  elements keeping the sort order.
+ *  @note dest and src must be sorted
+ *  @note this will keep duplicates
+ */
+static o71_status_t merge_sorted_refs
+(
+    o71_world_t * world_p,
+    o71_ref_t * * dest_rap,
+    size_t * dest_rnp,
+    o71_ref_t * src_ra,
+    size_t src_n
+);
+
+/*  ref_qsort  */
+/**
+ *  Sorts an array of references.
+ */
+static void ref_qsort
+(
+    o71_ref_t * ref_a,
+    size_t ref_n
+);
+
+/*  ref_search  */
+/**
+ *  Binary search for refs
+ */
+static ptrdiff_t ref_search
+(
+    o71_ref_t * ra,
+    size_t rn,
+    o71_ref_t kr
+);
+
+/*  class_super_extend  */
+/**
+ *  Extends the array of superclasses.
+ *  @param world_p [in]
+ *  @param class_p [in, out]
+ *  @param super_ra [in, out]
+ *      has the list of classes to add (references are borrowed);
+ *      clobbered on exit
+ *  @param super_n
+ */
+static o71_status_t class_super_extend
+(
+    o71_world_t * world_p,
+    o71_class_t * class_p,
+    o71_ref_t * super_ra,
+    size_t super_n
+);
+
 #if _DEBUG
 static void obj_dump
 (
@@ -499,7 +573,10 @@ static void kvbag_array_dump
     o71_kvbag_t * kvbag_p
 );
 
-/* kvbag_rbtree_dump ********************************************************/
+/*  kvbag_rbtree_dump  */
+/**
+ *  Dumps to stdout the tree
+ */
 static void kvbag_rbtree_dump
 (
     o71_world_t * world_p,
@@ -594,8 +671,8 @@ O71_API o71_status_t o71_world_init
     world_p->obj_pa[O71X_CLASS_CLASS] = &world_p->class_class;
     world_p->obj_pa[O71X_STRING_CLASS] = &world_p->string_class;
     world_p->obj_pa[O71X_SMALL_INT_CLASS] = &world_p->small_int_class;
-    world_p->obj_pa[O71X_NATIVE_FUNCTION_CLASS] =
-        &world_p->native_function_class;
+    world_p->obj_pa[O71X_FUNCTION_CLASS] =
+        &world_p->function_class;
     world_p->obj_pa[O71X_SCRIPT_FUNCTION_CLASS] =
         &world_p->script_function_class;
     world_p->obj_pa[O71X_INT_ADD_FUNC] = &world_p->int_add_func;
@@ -610,7 +687,7 @@ O71_API o71_status_t o71_world_init
     world_p->null_class.set_field = set_missing_field;
     world_p->null_class.object_size = sizeof(o71_mem_obj_t);
     world_p->null_class.model = O71M_MEM_OBJ;
-    world_p->null_class.super_a = NULL;
+    world_p->null_class.super_ra = NULL;
     world_p->null_class.super_n = 0;
     kvbag_init(&world_p->null_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
@@ -621,7 +698,7 @@ O71_API o71_status_t o71_world_init
     world_p->class_class.set_field = set_missing_field;
     world_p->class_class.object_size = sizeof(o71_class_t);
     world_p->class_class.model = O71M_CLASS;
-    world_p->class_class.super_a = NULL;
+    world_p->class_class.super_ra = NULL;
     world_p->class_class.super_n = 0;
     kvbag_init(&world_p->class_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
@@ -632,7 +709,7 @@ O71_API o71_status_t o71_world_init
     world_p->string_class.set_field = set_missing_field;
     world_p->string_class.object_size = sizeof(o71_string_t);
     world_p->string_class.model = O71M_STRING;
-    world_p->string_class.super_a = NULL;
+    world_p->string_class.super_ra = NULL;
     world_p->string_class.super_n = 0;
     kvbag_init(&world_p->string_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
@@ -643,21 +720,20 @@ O71_API o71_status_t o71_world_init
     world_p->small_int_class.set_field = set_missing_field;
     world_p->small_int_class.object_size = 0; // not a memory object
     world_p->small_int_class.model = O71M_SMALL_INT;
-    world_p->small_int_class.super_a = NULL;
+    world_p->small_int_class.super_ra = NULL;
     world_p->small_int_class.super_n = 0;
     kvbag_init(&world_p->small_int_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
-    world_p->native_function_class.hdr.class_r = O71R_CLASS_CLASS;
-    world_p->native_function_class.hdr.ref_n = 1;
-    world_p->native_function_class.finish = noop_object_finish;
-    world_p->native_function_class.get_field = get_missing_field;
-    world_p->native_function_class.set_field = set_missing_field;
-    world_p->native_function_class.object_size = sizeof(o71_function_t);
-    world_p->native_function_class.model = O71M_FUNCTION;
-    world_p->native_function_class.super_a = NULL;
-    world_p->native_function_class.super_n = 0;
-    kvbag_init(&world_p->native_function_class.method_bag, 
-               O71_METHOD_ARRAY_LIMIT);
+    world_p->function_class.hdr.class_r = O71R_CLASS_CLASS;
+    world_p->function_class.hdr.ref_n = 1;
+    world_p->function_class.finish = noop_object_finish;
+    world_p->function_class.get_field = get_missing_field;
+    world_p->function_class.set_field = set_missing_field;
+    world_p->function_class.object_size = sizeof(o71_function_t);
+    world_p->function_class.model = O71M_FUNCTION;
+    world_p->function_class.super_ra = NULL;
+    world_p->function_class.super_n = 0;
+    kvbag_init(&world_p->function_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->script_function_class.hdr.class_r = O71R_CLASS_CLASS;
     world_p->script_function_class.hdr.ref_n = 1;
@@ -666,12 +742,12 @@ O71_API o71_status_t o71_world_init
     world_p->script_function_class.set_field = set_missing_field;
     world_p->script_function_class.object_size = sizeof(o71_script_function_t);
     world_p->script_function_class.model = O71M_SCRIPT_FUNCTION;
-    world_p->script_function_class.super_a = NULL;
+    world_p->script_function_class.super_ra = NULL;
     world_p->script_function_class.super_n = 0;
     kvbag_init(&world_p->script_function_class.method_bag, 
                O71_METHOD_ARRAY_LIMIT);
 
-    world_p->int_add_func.hdr.class_r = O71R_NATIVE_FUNCTION_CLASS;
+    world_p->int_add_func.hdr.class_r = O71R_FUNCTION_CLASS;
     world_p->int_add_func.hdr.ref_n = 1;
     world_p->int_add_func.call = int_add_call;
     world_p->int_add_func.run = null_func_run;
@@ -681,6 +757,7 @@ O71_API o71_status_t o71_world_init
     do
     {
         o71_ref_t int_add_str_r;
+        o71_ref_t super_ra[1];
         os = o71_ics(world_p, &int_add_str_r, "add");
         if (os) { M("fail: %s", N(os)); break; }
         A(o71_mem_obj(world_p, int_add_str_r));
@@ -691,6 +768,12 @@ O71_API o71_status_t o71_world_init
         os = o71_deref(world_p, int_add_str_r);
         AOS(os);
         A(((o71_mem_obj_t *) o71_mem_obj(world_p, int_add_str_r))->ref_n == 1);
+
+        /* add function class as superclass of script_function class */
+        super_ra[0] = O71R_FUNCTION_CLASS;
+        os = class_super_extend(world_p, &world_p->script_function_class, 
+                                super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
 
         os = O71_OK;
         M("hello world %p!", world_p);
@@ -1979,6 +2062,7 @@ static o71_status_t sfunc_run
                 o71_ref_t obj_r, name_istr_r, value_r;
                 o71_class_t * class_p;
                 o71_kvbag_loc_t loc;
+                loc.rbtree.last_x = 0; // grr, to silence maybe-uninitialized
 
                 dest_vx = sfunc_p->opnd_a[ox];
                 obj_vx = sfunc_p->opnd_a[ox + 1];
@@ -3014,6 +3098,167 @@ static void obj_dump
 }
 
 #endif
+
+/* class_super_extend *******************************************************/
+static o71_status_t class_super_extend
+(
+    o71_world_t * world_p,
+    o71_class_t * class_p,
+    o71_ref_t * super_ra,
+    size_t super_n
+)
+{
+    o71_status_t os;
+    size_t i;
+    ptrdiff_t x;
+
+#if _DEBUG
+    {
+        ptrdiff_t i;
+        printf("class_super_extend: class_p=%p, existing super_ra=[", class_p);
+        if (class_p->super_n)
+        {
+            for (i = 0; i < (ptrdiff_t) class_p->super_n - 1; ++i)
+                printf("o%lX, ", class_p->super_ra[i]);
+            printf("o%lX", class_p->super_ra[i]);
+        }
+        printf("], new_super_ra=[");
+        if (super_n)
+        {
+            for (i = 0; i < (ptrdiff_t) super_n - 1; ++i)
+                printf("o%lX, ", super_ra[i]);
+            printf("o%lX", super_ra[i]);
+        }
+
+        printf("] => ");
+    }
+#endif
+    /* get rid of superclasses already in the list */
+    for (i = 0; i < super_n; )
+    {
+        x = ref_search(class_p->super_ra, class_p->super_n, super_ra[i]);
+        if (x >= 0)
+        {
+            super_ra[i] = super_ra[--super_n];
+            continue;
+        }
+        ++i;
+    }
+
+    /* sort the ones to introduce */
+    ref_qsort(super_ra, super_n);
+
+    os = merge_sorted_refs(world_p, &class_p->super_ra, &class_p->super_n,
+                           super_ra, super_n);
+#if _DEBUG
+    {
+        ptrdiff_t i;
+        printf("status: %s, output super_ra=[", N(os));
+        if (class_p->super_n)
+        {
+            for (i = 0; i < (ptrdiff_t) class_p->super_n - 1; ++i)
+                printf("o%lX, ", class_p->super_ra[i]);
+            printf("o%lX", class_p->super_ra[i]);
+        }
+        printf("].\n");
+    }
+#endif
+    return os;
+}
+
+/* merge_sorted_refs ********************************************************/
+static o71_status_t merge_sorted_refs
+(
+    o71_world_t * world_p,
+    o71_ref_t * * dest_rap,
+    size_t * dest_rnp,
+    o71_ref_t * src_ra,
+    size_t src_n
+)
+{
+    o71_status_t os;
+    ptrdiff_t i, j, k;
+    o71_ref_t * dest_ra;
+
+    A(dest_rnp + src_n >= dest_rnp);
+    i = (ptrdiff_t) *dest_rnp - 1;
+    k = (ptrdiff_t) (*dest_rnp + src_n);
+    os = redim(world_p, (void * *) dest_rap, dest_rnp, (size_t) k, 
+               sizeof(o71_ref_t));
+    if (os) return os;
+    dest_ra = *dest_rap;
+    j = (ptrdiff_t) src_n - 1;
+    while (i >= 0 && i < k)
+    {
+        dest_ra[k--] = (dest_ra[i] > src_ra[j]) ? dest_ra[i--] : src_ra[j--];
+    }
+    while (i < k) dest_ra[k--] = src_ra[j--];
+    return O71_OK;
+}
+
+
+/* ref_search ***************************************************************/
+static ptrdiff_t ref_search
+(
+    o71_ref_t * ra,
+    size_t rn,
+    o71_ref_t kr
+)
+{
+    ptrdiff_t a, b, c;
+    for (a = 0, b = (ptrdiff_t) rn - 1; a <= b; )
+    {
+        c = (a + b) >> 1;
+        if (kr == ra[c]) return c;
+        if (kr < ra[c]) b = c - 1;
+        else a = c + 1;
+    }
+    return ~a;
+}
+
+/* ref_qsort ****************************************************************/
+static void ref_qsort
+(
+    o71_ref_t * ref_a,
+    size_t ref_n
+)
+{
+    size_t i, j;
+    int ii, jj;
+    o71_ref_t r;
+
+    for (; ref_n > 1;)
+    {
+        i = 0;
+        j = ref_n - 1;
+        ii = 1; jj = 0;
+        while (i < j)
+        {
+            if (ref_a[i] > ref_a[j])
+            {
+                r = ref_a[i];
+                ref_a[i] = ref_a[j];
+                ref_a[j] = r;
+                ii ^= 1;
+                jj ^= -1;
+            }
+            i += ii;
+            j += jj;
+        }
+        /* launch the short side recursively so that depth is logarithmic */
+        if (i < ref_n - i - 1)
+        {
+            ref_qsort(ref_a, i);
+            ref_a += i + 1;
+            ref_n -= i + 1;
+        }
+        else
+        {
+            ref_qsort(ref_a + i + 1, ref_n - (i + 1));
+            ref_n = i;
+        }
+    }
+}
 
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN

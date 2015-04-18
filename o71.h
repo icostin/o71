@@ -49,8 +49,8 @@
 #define O71R_CLASS_CLASS (O71_MOX_TO_REF(O71X_CLASS_CLASS))
 #define O71R_STRING_CLASS (O71_MOX_TO_REF(O71X_STRING_CLASS))
 #define O71R_SMALL_INT_CLASS (O71_MOX_TO_REF(O71X_SMALL_INT_CLASS))
-#define O71R_NATIVE_FUNCTION_CLASS \
-    (O71_MOX_TO_REF(O71X_NATIVE_FUNCTION_CLASS))
+#define O71R_FUNCTION_CLASS \
+    (O71_MOX_TO_REF(O71X_FUNCTION_CLASS))
 #define O71R_SCRIPT_FUNCTION_CLASS \
     (O71_MOX_TO_REF(O71X_SCRIPT_FUNCTION_CLASS))
 #define O71R_INT_ADD_FUNC (O71_MOX_TO_REF(O71X_INT_ADD_FUNC))
@@ -103,7 +103,7 @@ enum o71_builtin_obj_index_e
     O71X_CLASS_CLASS,
     O71X_STRING_CLASS,
     O71X_SMALL_INT_CLASS,
-    O71X_NATIVE_FUNCTION_CLASS,
+    O71X_FUNCTION_CLASS,
     O71X_SCRIPT_FUNCTION_CLASS,
     O71X_INT_ADD_FUNC,
 
@@ -286,7 +286,7 @@ struct o71_kvbag_s
 struct o71_class_s
 {
     o71_mem_obj_t hdr;
-    o71_ref_t * super_a;
+    o71_ref_t * super_ra;
     o71_finish_f finish;
     o71_get_field_f get_field;
     o71_set_field_f set_field;
@@ -483,7 +483,7 @@ struct o71_world_s
     o71_class_t class_class;
     o71_class_t string_class;
     o71_class_t small_int_class;
-    o71_class_t native_function_class;
+    o71_class_t function_class;
     o71_class_t script_function_class;
     o71_function_t int_add_func;
 
