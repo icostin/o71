@@ -3188,6 +3188,7 @@ static o71_status_t merge_sorted_refs
     if (os) return os;
     dest_ra = *dest_rap;
     j = (ptrdiff_t) src_n - 1;
+    --k;
     while (i >= 0 && i < k)
     {
         dest_ra[k--] = (dest_ra[i] > src_ra[j]) ? dest_ra[i--] : src_ra[j--];
