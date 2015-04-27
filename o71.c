@@ -501,7 +501,7 @@ static o71_status_t kvbag_put
 
 /*  merge_sorted_refs  */
 /**
- *  Reallocates the destination array of sorted refs and inserts source 
+ *  Reallocates the destination array of sorted refs and inserts source
  *  elements keeping the sort order.
  *  @note dest and src must be sorted
  *  @note this will keep duplicates
@@ -744,7 +744,7 @@ O71_API o71_status_t o71_world_init
     world_p->script_function_class.model = O71M_SCRIPT_FUNCTION;
     world_p->script_function_class.super_ra = NULL;
     world_p->script_function_class.super_n = 0;
-    kvbag_init(&world_p->script_function_class.method_bag, 
+    kvbag_init(&world_p->script_function_class.method_bag,
                O71_METHOD_ARRAY_LIMIT);
 
     world_p->int_add_func.hdr.class_r = O71R_FUNCTION_CLASS;
@@ -771,7 +771,7 @@ O71_API o71_status_t o71_world_init
 
         /* add function class as superclass of script_function class */
         super_ra[0] = O71R_FUNCTION_CLASS;
-        os = class_super_extend(world_p, &world_p->script_function_class, 
+        os = class_super_extend(world_p, &world_p->script_function_class,
                                 super_ra, 1);
         if (os) { M("fail: %s", N(os)); break; }
 
@@ -804,7 +804,7 @@ O71_API o71_status_t o71_world_finish
         if (IS_FREE_OBJECT_SLOT(world_p->obj_pa[obj_x])) continue;
         /* skip items already queued for destruction */
         if (world_p->mem_obj_pa[obj_x]->ref_n < 0) continue;
-        world_p->mem_obj_pa[obj_x]->enc_destroy_next_x = 
+        world_p->mem_obj_pa[obj_x]->enc_destroy_next_x =
             ~world_p->destroy_list_head_x;
         world_p->destroy_list_head_x = obj_x;
         M("queueing for destruction: obj_x=0x%lX", obj_x);
@@ -1088,7 +1088,7 @@ O71_API o71_status_t o71_str_freeze
 
     if (!(o71_model(world_p, str_r) & O71M_STRING))
     {
-        M("o%lX is not a string (model: 0x%X)", 
+        M("o%lX is not a string (model: 0x%X)",
           (long) str_r, o71_model(world_p, str_r));
         return O71_BAD_STRING_REF;
     }
@@ -1115,7 +1115,7 @@ O71_API o71_status_t o71_str_intern
 
     if (!(o71_model(world_p, str_r) & O71M_STRING))
     {
-        M("o%lX is not a string (model: 0x%X)", 
+        M("o%lX is not a string (model: 0x%X)",
           (long) str_r, o71_model(world_p, str_r));
         return O71_BAD_STRING_REF;
     }
@@ -1127,7 +1127,7 @@ O71_API o71_status_t o71_str_intern
         return o71_ref(world_p, str_r);
     }
 
-    os = kvbag_search(world_p, &world_p->istr_bag, str_r, 
+    os = kvbag_search(world_p, &world_p->istr_bag, str_r,
                       str_intern_cmp, NULL, &loc);
     if (os == O71_OK)
     {
@@ -1154,7 +1154,7 @@ O71_API o71_status_t o71_str_intern
     printf("intern bag:\n");
     kvbag_dump(world_p, &world_p->istr_bag);
 #endif
-    
+
     return O71_OK;
 }
 
@@ -1729,7 +1729,7 @@ static o71_status_t alloc_object_index
     *obj_xp = world_p->free_list_head_x;
     world_p->free_list_head_x = DECODE_FREE_OBJECT_SLOT(
         world_p->enc_next_free_xa[world_p->free_list_head_x]);
-    M("ox=%lX, free_head=%lX, obj_n=%lX", 
+    M("ox=%lX, free_head=%lX, obj_n=%lX",
       (long) *obj_xp, (long) world_p->free_list_head_x, (long) world_p->obj_n);
 
     return O71_OK;
@@ -1978,7 +1978,7 @@ O71_INLINE o71_status_t set_var
     A(o71_model(world_p, src_r) != O71M_INVALID);
     os = o71_ref(world_p, src_r);
 #if O71_CHECKED
-    if (os) 
+    if (os)
     {
         M("failed referencing src ref 0x%lX: %s", (long) src_r, N(os));
         return os;
@@ -1988,7 +1988,7 @@ O71_INLINE o71_status_t set_var
 #if O71_CHECKED
     if (os)
     {
-        M("failed dereferencing existing ref in dest 0x%lX: %s", 
+        M("failed dereferencing existing ref in dest 0x%lX: %s",
           (long) *dest_rp, N(os));
         return os;
     }
@@ -2016,7 +2016,7 @@ static o71_status_t sfunc_run
     sfunc_p = (o71_script_function_t *) sec_p->exe_ctx.func_p;
     ix = (unsigned int) sec_p->insn_x;
     if (flow_p->exc_r != O71R_NULL) goto l_exc;
-    if (sec_p->calling) 
+    if (sec_p->calling)
     {
         sec_p->calling = 0;
         ox = sfunc_p->insn_a[ix].opnd_x;
@@ -2043,14 +2043,14 @@ static o71_status_t sfunc_run
             M("EXEC %04X: nop", ix);
             break;
 
-        case O71O_INIT: 
+        case O71O_INIT:
             {
                 uint32_t dvx, cx;
                 dvx = sfunc_p->opnd_a[ox];
                 cx = sfunc_p->opnd_a[ox + 1];
-                M("EXEC %04X: init v%X, c%X=o%lX", 
+                M("EXEC %04X: init v%X, c%X=o%lX",
                   ix, dvx, cx, sfunc_p->const_ra[cx]);
-                os = set_var(world_p, &sec_p->var_ra[dvx], 
+                os = set_var(world_p, &sec_p->var_ra[dvx],
                              sfunc_p->const_ra[cx]);
                 AOS(os);
                 break;
@@ -2093,7 +2093,7 @@ static o71_status_t sfunc_run
                     M("TODO: throw exception");
                     return O71_TODO;
                 }
-                value_r = kvbag_get_loc_value(world_p, &class_p->method_bag, 
+                value_r = kvbag_get_loc_value(world_p, &class_p->method_bag,
                                               &loc);
                 M("v%X <- method ref 0x%lX", dest_vx, value_r);
                 os = set_var(world_p, &sec_p->var_ra[dest_vx], value_r);
@@ -2129,7 +2129,7 @@ static o71_status_t sfunc_run
                 uint32_t fvx, an, i;
                 fvx = sfunc_p->opnd_a[ox + 1];
                 an = sfunc_p->opnd_a[ox + 2];
-                M("EXEC %04X: call dest:v%X, func:v%X=o%lX, args:%u", 
+                M("EXEC %04X: call dest:v%X, func:v%X=o%lX, args:%u",
                   ix, sfunc_p->opnd_a[ox], fvx, sec_p->var_ra[fvx], an);
                 if (an <= sizeof(laa) / sizeof(laa[0])) aa = &laa[0];
                 else
@@ -2141,7 +2141,7 @@ static o71_status_t sfunc_run
                 {
                     aa[i] = sec_p->var_ra[sfunc_p->opnd_a[ox + 3 + i]];
                     os = o71_ref(world_p, aa[i]);
-                    M("arg[%u]: v%X=o%lX", 
+                    M("arg[%u]: v%X=o%lX",
                       i, sfunc_p->opnd_a[ox + 3 + i], aa[i]);
                     AOS(os);
                 }
@@ -2166,8 +2166,8 @@ static o71_status_t sfunc_run
             {
                 uint32_t dvx;
                 dvx = sfunc_p->opnd_a[ox];
-                M("call to f%lX returned o%lX, storing into v%X", 
-                  (long) sec_p->var_ra[sfunc_p->opnd_a[ox + 1]], 
+                M("call to f%lX returned o%lX, storing into v%X",
+                  (long) sec_p->var_ra[sfunc_p->opnd_a[ox + 1]],
                   (long) flow_p->value_r, dvx);
                 os = o71_deref(world_p, sec_p->var_ra[dvx]);
                 AOS(os);
@@ -2298,7 +2298,7 @@ static o71_status_t str_finish
     o71_status_t os;
     A(o71_model(world_p, obj_r) & O71M_STRING);
     str_p = o71_mem_obj(world_p, obj_r);
-    M("remove string '%.*s' (mode=%u, m=%zu)", 
+    M("remove string '%.*s' (mode=%u, m=%zu)",
       (int) str_p->n, str_p->a, str_p->mode, str_p->m);
     kvbag_dump(world_p, &world_p->istr_bag);
     if (str_p->mode == O71_SM_INTERN)
@@ -2339,9 +2339,9 @@ static o71_status_t str_intern_cmp
 
     a_p = o71_mem_obj(world_p, a_r);
     b_p = o71_mem_obj(world_p, b_r);
-    if (a_p->n != b_p->n) 
+    if (a_p->n != b_p->n)
     {
-        M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a, 
+        M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a,
           a_p->n > b_p->n ? ">" : "<",
           (int) b_p->n, b_p->a);
         return (a_p->n > b_p->n ? O71_MORE : O71_LESS);
@@ -2349,7 +2349,7 @@ static o71_status_t str_intern_cmp
     for (i = 0; i < a_p->n; ++i)
         if (a_p->a[i] != b_p->a[i])
         {
-            M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a, 
+            M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a,
               a_p->a[i] > b_p->a[i] ? ">" : "<",
               (int) b_p->n, b_p->a);
             return (a_p->a[i] > b_p->a[i] ? O71_MORE : O71_LESS);
@@ -2479,7 +2479,7 @@ static o71_status_t kvbag_insert
                 }
                 kvbag_p->mode = O71_BAG_RBTREE;
                 // fall into the rbtree branch
-                os = kvbag_rbtree_search(world_p, kvbag_p, key_r, 
+                os = kvbag_rbtree_search(world_p, kvbag_p, key_r,
                                          str_intern_cmp, NULL, loc_p);
                 A(os == O71_MISSING);
                 break;
@@ -2518,7 +2518,7 @@ static o71_status_t kvbag_delete
     o71_kvbag_loc_t * loc_p
 )
 {
-    return (kvbag_p->mode == O71_BAG_ARRAY) 
+    return (kvbag_p->mode == O71_BAG_ARRAY)
         ? kvbag_array_delete(world_p, kvbag_p, loc_p)
         : kvbag_rbtree_delete(world_p, kvbag_p, loc_p);
 }
@@ -2608,7 +2608,7 @@ static void kvbag_rbtree_dump
 {
     if (!kvnode_p) return;
     kvbag_rbtree_dump(world_p, GET_CHILD(kvnode_p, O71_LESS), depth + 1);
-    printf("%.*sk=", depth * 2, 
+    printf("%.*sk=", depth * 2,
            "                                                                ");
     obj_dump(world_p, kvnode_p->kv.key_r);
     printf(" -> v=");
@@ -2634,7 +2634,7 @@ static o71_status_t kvbag_rbtree_add
     o71_kvbag_loc_t loc;
     o71_status_t os;
     M("kvbag_p=%p, key_r=%lX, value_r=%lX", kvbag_p, key_r, value_r);
-    os = kvbag_rbtree_search(world_p, kvbag_p, key_r, 
+    os = kvbag_rbtree_search(world_p, kvbag_p, key_r,
                              str_intern_cmp, NULL, &loc);
     if (os == O71_OK)
     {
@@ -2733,7 +2733,7 @@ static o71_status_t kvbag_rbtree_insert
             continue;
         }
         // parent is red, uncle is black or NULL
-        if ((gs = loc_p->rbtree.side_a[i]) 
+        if ((gs = loc_p->rbtree.side_a[i])
             != (ps = loc_p->rbtree.side_a[i + 1]))
         {
             // node and parent are on different sides
@@ -2775,7 +2775,7 @@ static void kvbag_array_dump
     printf("[array]");
     for (i = 0; i < kvbag_p->n; ++i)
     {
-        printf(" k=%lX:v=%lX", 
+        printf(" k=%lX:v=%lX",
                kvbag_p->kv_a[i].key_r, kvbag_p->kv_a[i].value_r);
     }
 
@@ -2802,8 +2802,8 @@ static o71_status_t kvbag_array_search
     {
         int c = (a + b) >> 1;
         unsigned int r = cmp(world_p, key_r, kvbag_p->kv_a[c].key_r, ctx);
-        M("intern_cmp(key=%lX, bag_key=%lX) -> %s", 
-          key_r, kvbag_p->kv_a[c].key_r, 
+        M("intern_cmp(key=%lX, bag_key=%lX) -> %s",
+          key_r, kvbag_p->kv_a[c].key_r,
           r == O71_EQUAL ? "equal" : (r ? "more" : "less"));
         switch (r)
         {
@@ -3088,7 +3088,7 @@ static void obj_dump
     if ((om & O71M_STRING))
     {
         o71_string_t * str_p = world_p->obj_pa[obj_x];
-        printf("%sstr_%lX(\"%.*s\")", 
+        printf("%sstr_%lX(\"%.*s\")",
                str_p->mode == O71_SM_MODIFIABLE ? "" :
                (str_p->mode == O71_SM_READ_ONLY ? "ro" : "i"),
                (long) obj_r, (int) str_p->n, str_p->a);
@@ -3109,7 +3109,7 @@ static o71_status_t class_super_extend
 )
 {
     o71_status_t os;
-    size_t i;
+    size_t i, j;
     ptrdiff_t x;
 
 #if _DEBUG
@@ -3148,6 +3148,28 @@ static o71_status_t class_super_extend
     /* sort the ones to introduce */
     ref_qsort(super_ra, super_n);
 
+    for (i = 1; i < super_n && super_ra[i - 1] < super_ra[i]; ++i);
+    if (i < super_n)
+    {
+        for (j = i - 1; i < super_n; ++i)
+            if (super_ra[j] < super_ra[i]) super_ra[++j] = super_ra[i];
+        super_n = j;
+#if _DEBUG
+        {
+            ptrdiff_t i;
+            printf("new_super_ra after sort & uniq =[");
+            if (super_n)
+            {
+                for (i = 0; i < (ptrdiff_t) super_n - 1; ++i)
+                    printf("o%lX, ", super_ra[i]);
+                printf("o%lX", super_ra[i]);
+            }
+
+            printf("] => ");
+        }
+#endif
+    }
+
     os = merge_sorted_refs(world_p, &class_p->super_ra, &class_p->super_n,
                            super_ra, super_n);
 #if _DEBUG
@@ -3183,7 +3205,7 @@ static o71_status_t merge_sorted_refs
     A(dest_rnp + src_n >= dest_rnp);
     i = (ptrdiff_t) *dest_rnp - 1;
     k = (ptrdiff_t) (*dest_rnp + src_n);
-    os = redim(world_p, (void * *) dest_rap, dest_rnp, (size_t) k, 
+    os = redim(world_p, (void * *) dest_rap, dest_rnp, (size_t) k,
                sizeof(o71_ref_t));
     if (os) return os;
     dest_ra = *dest_rap;
@@ -3340,51 +3362,95 @@ static int test ()
 
     do
     {
+        {
+            o71_class_t c;
+            size_t n, i;
+            size_t N = 50;
+            o71_ref_t * ra;
+            o71_ref_t l;
+            c.super_ra = NULL;
+            c.super_n = 0;
+            os = redim(&world, (void * *) &c.super_ra, &c.super_n, N,
+                       sizeof(o71_ref_t));
+            if (os) TE("error (line %u): status: %s", __LINE__, N(os));
+            for (i = 0; i < c.super_n; ++i)
+                c.super_ra[i] = 2 * i + 1;
+
+            ra = NULL;
+            n = 0;
+            os = redim(&world, (void * *) &ra, &n, N, sizeof(o71_ref_t));
+            if (os) TE("error (line %u): status: %s", __LINE__, N(os));
+            for (i = 0, l = 1; i < n; ++i)
+                ra[i] = l = (31409573 * l + 1) % (2 * N);
+
+            os = class_super_extend(&world, &c, ra, n);
+            if (os) TE("error (line %u): status: %s", __LINE__, N(os));
+
+            os = redim(&world, (void * *) &ra, &n, 0, sizeof(o71_ref_t));
+            if (os) TE("error (line %u): status: %s", __LINE__, N(os));
+
+            for (i = 0; i < N; ++i)
+            {
+                l = 2 * i + 1;
+                if (ref_search(c.super_ra, c.super_n, l) < 0)
+                    TE("error (line %u): did not find %lX", __LINE__, l);
+            }
+
+            for (i = 0, l = 1; i < n; ++i)
+            {
+                l = (31409573 * l + 1) % (2 * N);
+                if (ref_search(c.super_ra, c.super_n, l) < 0)
+                    TE("error (line %u): did not find %lX", __LINE__, l);
+            }
+
+            os = redim(&world, (void * *) &c.super_ra, &c.super_n, 0, sizeof(o71_ref_t));
+            if (os) TE("error (line %u): status: %s", __LINE__, N(os));
+        }
+
         os = o71_cstring(&world, &r, "first string");
-        if (os) TE("error: failed to create first string object: %s\n",
+        if (os) TE("error: failed to create first string object: %s",
                    o71_status_name(os));
 
         if (!(o71_model(&world, r) & O71M_STRING))
-            TE("error: string object created has bad model\n");
+            TE("error: string object created has bad model");
 
         os = o71_ref(&world, r);
-        if (os) TE("referencing first string failed: %s\n",
-                   o71_status_name(os));
+        if (os) TE("referencing first string failed: %s", o71_status_name(os));
 
         os = o71_deref(&world, r);
-        if (os) TE("first dereferencing of first string failed: %s\n",
+        if (os) TE("first dereferencing of first string failed: %s",
                    o71_status_name(os));
         os = o71_deref(&world, r);
-        if (os) TE("second dereferencing of first string failed: %s\n",
+        if (os) TE("second dereferencing of first string failed: %s",
                    o71_status_name(os));
         os = o71_deref(&world, O71R_NULL);
-        if (os) TE("null deref #1 fail: %s\n", o71_status_name(os));
+        if (os) TE("null deref #1 fail: %s", o71_status_name(os));
         os = o71_deref(&world, O71R_NULL);
-        if (os) TE("null deref #2 fail: %s\n", o71_status_name(os));
+        if (os) TE("null deref #2 fail: %s", o71_status_name(os));
         os = o71_deref(&world, O71R_NULL);
-        if (os) TE("null deref #3 fail: %s\n", o71_status_name(os));
+        if (os) TE("null deref #3 fail: %s", o71_status_name(os));
         os = o71_ref(&world, O71R_NULL);
-        if (os) TE("null ref #1 fail: %s\n", o71_status_name(os));
+        if (os) TE("null ref #1 fail: %s", o71_status_name(os));
         os = o71_deref(&world, O71R_NULL);
-        if (os) TE("null deref #4 fail: %s\n", o71_status_name(os));
+        if (os) TE("null deref #4 fail: %s", o71_status_name(os));
 
         os = o71_rocs(&world, &g1_r, "gargara");
-        if (os) TE("failed to create r/o string 'gargara': %s\n",
+        if (os) TE("failed to create r/o string 'gargara': %s",
                    o71_status_name(os));
         os = o71_str_intern(&world, g1_r, &gi_r);
-        if (os) TE("failed to get intern string for 'gargara': %s\n",
+        if (os) TE("failed to get intern string for 'gargara': %s",
                    o71_status_name(os));
-        if (g1_r != gi_r) 
-            TE("received different string for intern form for 'gargara': %s\n",
+        if (g1_r != gi_r)
+            TE("received different string for intern form for 'gargara': %s",
                o71_status_name(os));
         if (ORC(&world, gi_r) != 2)
-            TE("bad ref count for newly intern'ed 'gargara'\n");
+            TE("bad ref count for newly intern'ed 'gargara'");
         os = o71_ics(&world, &g2_r, "zbenghi");
-        if (os) TE("failed to create intern string 'zbenghi': %s\n",
+        if (os) TE("failed to create intern string 'zbenghi': %s",
                    o71_status_name(os));
 
         os = o71_ics(&world, &g3_r, "atroce");
-        if (os) TE("failed to create intern string 'atroce': %s\n",
+        if (os) TE("failed to create intern string 'atroce': %s",
                    o71_status_name(os));
 
         for (i = 0; i < 26 * 26; ++i)
@@ -3393,61 +3459,61 @@ static int test ()
             sb[1] = 'a' + i / 26;
             sb[2] = 0;
             os = o71_cstring(&world, &g1_r, sb);
-            if (os) TE("failed to create string '%s': %s\n", 
+            if (os) TE("failed to create string '%s': %s",
                        sb, o71_status_name(os));
             //M("ics('%s') -> o%lX", sb, g1_r);
             os = o71_str_freeze(&world, g1_r);
-            if (os) TE("failed to freeze string '%s': %s\n", 
+            if (os) TE("failed to freeze string '%s': %s",
                        sb, o71_status_name(os));
             os = o71_str_intern(&world, g1_r, &gi_r);
-            if (os) TE("failed to create intern string '%s': %s\n",
+            if (os) TE("failed to create intern string '%s': %s",
                        sb, o71_status_name(os));
-            if (g1_r != gi_r) 
-                TE("unexpected intern string s%lX from s%lX='%s'\n", 
+            if (g1_r != gi_r)
+                TE("unexpected intern string s%lX from s%lX='%s'",
                    gi_r, g1_r, sb);
             os = o71_deref(&world, g1_r);
-            if (os) TE("deref error for s%lX='%s'\n", g1_r, sb);
+            if (os) TE("deref error for s%lX='%s'", g1_r, sb);
         }
         if (i < 26 * 26) break;
 
         ra[0] = O71_SINT_TO_REF(1);
         ra[1] = O71_SINT_TO_REF(2);
         os = o71_prep_call(&world.root_flow, O71R_INT_ADD_FUNC, ra, 2);
-        if (os) TE("int_add(1+2) failed: %s\n", o71_status_name(os));
+        if (os) TE("int_add(1+2) failed: %s", o71_status_name(os));
         if (world.root_flow.value_r != O71_SINT_TO_REF(3))
-            TE("int_add(1+2) returned ref %lX\n",
+            TE("int_add(1+2) returned ref %lX",
                (long) world.root_flow.value_r);
 
         os = o71_sfunc_create(&world, &add3_r, 3);
-        if (os) TE("add3 function create failed: %s\n", o71_status_name(os));
+        if (os) TE("add3 function create failed: %s", o71_status_name(os));
 
         if (!(o71_model(&world, add3_r) & O71M_SCRIPT_FUNCTION))
-            TE("add3 create bad ref model: %X\n", o71_model(&world, add3_r));
+            TE("add3 create bad ref model: %X", o71_model(&world, add3_r));
         add3_p = o71_mem_obj(&world, add3_r);
 
         os = o71_sfunc_append_init(&world, add3_p, 3, O71R_INT_ADD_FUNC);
-        if (os) TE("add3: init v3, int_add_func: %s\n", o71_status_name(os));
+        if (os) TE("add3: init v3, int_add_func: %s", o71_status_name(os));
 
         os = o71_sfunc_append_call(&world, add3_p, 4, 3, 2, &arg_vxa);
-        if (os) TE("add3: call dest=v4, func=v3, arg1, arg2: %s\n",
+        if (os) TE("add3: call dest=v4, func=v3, arg1, arg2: %s",
                    o71_status_name(os));
         arg_vxa[0] = 0;
         arg_vxa[1] = 1;
 
         os = o71_ics(&world, &add_istr_r, "add");
-        if (os) TE("add3: failed to get istr('add'): %s\n",
+        if (os) TE("add3: failed to get istr('add'): %s",
                    o71_status_name(os));
 
         os = o71_sfunc_append_init(&world, add3_p, 5, add_istr_r);
-        if (os) TE("add3: init v3, istr_%lX('add'): %s\n", 
+        if (os) TE("add3: init v3, istr_%lX('add'): %s",
                    add_istr_r, o71_status_name(os));
 
         os = o71_sfunc_append_get_method(&world, add3_p, 6, 4, 5);
-        if (os) TE("add3: get_method dest=v5, obj=v4, name=v5: %s\n",
+        if (os) TE("add3: get_method dest=v5, obj=v4, name=v5: %s",
                    o71_status_name(os));
 
         os = o71_sfunc_append_call(&world, add3_p, 4, 6, 2, &arg_vxa);
-        if (os) TE("add3: call dest=v4, func=v6, v4, arg3: %s\n",
+        if (os) TE("add3: call dest=v4, func=v6, v4, arg3: %s",
                    o71_status_name(os));
         arg_vxa[0] = 4;
         arg_vxa[1] = 2;
@@ -3467,7 +3533,7 @@ static int test ()
             TE("running add3(2, 3, 4) failed: %s", o71_status_name(os));
 
         if (world.root_flow.value_r != O71_SINT_TO_REF(2 + 3 + 4))
-            TE("add3(2, 3, 4) returned wrong value ref %lX\n",
+            TE("add3(2, 3, 4) returned wrong value ref %lX",
                (long) world.root_flow.value_r);
     }
     while (0);

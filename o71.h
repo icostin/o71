@@ -153,7 +153,6 @@ typedef struct o71_mem_obj_s o71_mem_obj_t;
 typedef struct o71_script_exe_ctx_s o71_script_exe_ctx_t;
 typedef struct o71_script_function_s o71_script_function_t;
 typedef struct o71_string_s o71_string_t;
-typedef struct o71_struct_s o71_struct_t;
 typedef struct o71_world_s o71_world_t;
 typedef uintptr_t o71_obj_index_t;
 
@@ -287,12 +286,16 @@ struct o71_class_s
 {
     o71_mem_obj_t hdr;
     o71_ref_t * super_ra;
+    o71_kv_t * fix_field_ofs_a;
     o71_finish_f finish;
     o71_get_field_f get_field;
     o71_set_field_f set_field;
     o71_kvbag_t method_bag; // instance method bag
-    size_t object_size; // instance size
     size_t super_n;
+    size_t object_size; // instance size
+    size_t dyn_field_ofs; // offset in instance object to kvbag that has 
+                          // dynamic fields; 0 for no bag
+    size_t fix_field_n;
     uint32_t model;
 };
 
@@ -307,12 +310,6 @@ struct o71_string_s
     size_t n;
     size_t m;
     uint8_t mode;
-};
-
-struct o71_struct_s
-{
-    o71_mem_obj_t hdr;
-    o71_ref_t a[0];
 };
 
 struct o71_field_desc_s
@@ -367,11 +364,7 @@ struct o71_kvbag_loc_s
 struct o71_dyn_obj_s
 {
     o71_mem_obj_t hdr;
-    union
-    {
-        o71_kv_t * kv_a;
-    } opt;
-    size_t opt_field_n;
+    o71_kvbag_t dyn_field_bag;
     o71_ref_t fix_field_a[0];
 };
 
