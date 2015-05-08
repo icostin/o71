@@ -45,6 +45,7 @@
 #define O71_REF_TO_SINT(_ref) ((_ref) >> 1)
 
 #define O71R_NULL (O71_MOX_TO_REF(O71X_NULL))
+#define O71R_OBJECT_CLASS (O71_MOX_TO_REF(O71X_OBJECT_CLASS))
 #define O71R_NULL_CLASS (O71_MOX_TO_REF(O71X_NULL_CLASS))
 #define O71R_CLASS_CLASS (O71_MOX_TO_REF(O71X_CLASS_CLASS))
 #define O71R_STRING_CLASS (O71_MOX_TO_REF(O71X_STRING_CLASS))
@@ -99,6 +100,7 @@ enum o71_status_e
 enum o71_builtin_obj_index_e
 {
     O71X_NULL = 0,
+    O71X_OBJECT_CLASS,
     O71X_NULL_CLASS,
     O71X_CLASS_CLASS,
     O71X_STRING_CLASS,
@@ -370,7 +372,8 @@ struct o71_dyn_obj_s
 
 struct o71_function_s
 {
-    o71_mem_obj_t hdr;
+    //o71_mem_obj_t hdr;
+    o71_class_t cls;
     o71_call_f call;
     o71_run_f run;
 };
@@ -472,6 +475,7 @@ struct o71_world_s
     o71_flow_t root_flow;
 
     o71_mem_obj_t null_object;
+    o71_class_t object_class; // the mother of al that is evil
     o71_class_t null_class;
     o71_class_t class_class;
     o71_class_t string_class;

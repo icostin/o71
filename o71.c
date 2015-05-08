@@ -667,6 +667,7 @@ O71_API o71_status_t o71_world_init
     kvbag_init(&world_p->istr_bag, 0x10);
 
     world_p->obj_pa[O71X_NULL] = &world_p->null_object;
+    world_p->obj_pa[O71X_OBJECT_CLASS] = &world_p->object_class;
     world_p->obj_pa[O71X_NULL_CLASS] = &world_p->null_class;
     world_p->obj_pa[O71X_CLASS_CLASS] = &world_p->class_class;
     world_p->obj_pa[O71X_STRING_CLASS] = &world_p->string_class;
@@ -679,6 +680,17 @@ O71_API o71_status_t o71_world_init
 
     world_p->null_object.class_r = O71R_NULL_CLASS;
     world_p->null_object.ref_n = 1; // permanent object
+
+    world_p->object_class.hdr.class_r = O71R_CLASS_CLASS;
+    world_p->object_class.hdr.ref_n = 1;
+    world_p->object_class.finish = noop_object_finish;
+    world_p->object_class.get_field = get_missing_field;
+    world_p->object_class.set_field = set_missing_field;
+    world_p->object_class.object_size = sizeof(o71_mem_obj_t);
+    world_p->object_class.model = O71M_MEM_OBJ;
+    world_p->object_class.super_ra = NULL;
+    world_p->object_class.super_n = 0;
+    kvbag_init(&world_p->object_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->null_class.hdr.class_r = O71R_CLASS_CLASS;
     world_p->null_class.hdr.ref_n = 1;
@@ -747,8 +759,16 @@ O71_API o71_status_t o71_world_init
     kvbag_init(&world_p->script_function_class.method_bag,
                O71_METHOD_ARRAY_LIMIT);
 
-    world_p->int_add_func.hdr.class_r = O71R_FUNCTION_CLASS;
-    world_p->int_add_func.hdr.ref_n = 1;
+    world_p->int_add_func.cls.hdr.class_r = O71R_FUNCTION_CLASS;
+    world_p->int_add_func.cls.hdr.ref_n = 1;
+    world_p->int_add_func.cls.finish = noop_object_finish;                 
+    world_p->int_add_func.cls.get_field = get_missing_field;               
+    world_p->int_add_func.cls.set_field = set_missing_field;               
+    world_p->int_add_func.cls.object_size = 0; // instances are not created
+    world_p->int_add_func.cls.model = O71M_FUNCTION;                
+    world_p->int_add_func.cls.super_ra = NULL;                             
+    world_p->int_add_func.cls.super_n = 0;                                 
+    kvbag_init(&world_p->int_add_func.cls.method_bag, O71_METHOD_ARRAY_LIMIT);
     world_p->int_add_func.call = int_add_call;
     world_p->int_add_func.run = null_func_run;
 
@@ -757,7 +777,7 @@ O71_API o71_status_t o71_world_init
     do
     {
         o71_ref_t int_add_str_r;
-        o71_ref_t super_ra[1];
+        o71_ref_t super_ra[3];
         os = o71_ics(world_p, &int_add_str_r, "add");
         if (os) { M("fail: %s", N(os)); break; }
         A(o71_mem_obj(world_p, int_add_str_r));
@@ -769,10 +789,34 @@ O71_API o71_status_t o71_world_init
         AOS(os);
         A(((o71_mem_obj_t *) o71_mem_obj(world_p, int_add_str_r))->ref_n == 1);
 
-        /* add function class as superclass of script_function class */
-        super_ra[0] = O71R_FUNCTION_CLASS;
-        os = class_super_extend(world_p, &world_p->script_function_class,
+        super_ra[0] = O71R_OBJECT_CLASS;
+        os = class_super_extend(world_p, &world_p->null_class, super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        os = class_super_extend(world_p, &world_p->class_class, super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        os = class_super_extend(world_p, &world_p->string_class, super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        os = class_super_extend(world_p, &world_p->small_int_class,
                                 super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        super_ra[1] = O71R_CLASS_CLASS;
+        os = class_super_extend(world_p, &world_p->function_class, super_ra, 2);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        /* add function class as superclass of script_function class */
+        super_ra[0] = O71R_OBJECT_CLASS;
+        super_ra[1] = O71R_CLASS_CLASS;
+        super_ra[2] = O71R_FUNCTION_CLASS;
+        os = class_super_extend(world_p, &world_p->script_function_class,
+                                super_ra, 3);
         if (os) { M("fail: %s", N(os)); break; }
 
         os = O71_OK;
