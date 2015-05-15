@@ -1194,7 +1194,7 @@ O71_API o71_status_t o71_str_intern
     }
     str_p->mode = O71_SM_INTERN;
     *intern_str_rp = str_r;
-#if _DEBUG
+#if _DEBUG >= 2
     printf("intern bag:\n");
     kvbag_dump(world_p, &world_p->istr_bag);
 #endif
@@ -1288,11 +1288,12 @@ O71_API o71_status_t o71_run
             /* fall to ok to unwind stack */
         case O71_OK:
             {
-                size_t size;
+                //size_t size;
                 flow_p->exe_ctx_p = exe_ctx_p->caller_p;
                 flow_p->depth -= 1;
-                size = exe_ctx_p->size;
-                os = redim(flow_p->world_p, (void * *) &exe_ctx_p, &size, 0, 1);
+                //size = exe_ctx_p->size;
+                //os = redim(flow_p->world_p, (void * *) &exe_ctx_p, &size, 0, 1);
+                os = o71_deref(flow_p->world_p, exe_ctx_p->self_r);
                 AOS(os);
             }
             break;
@@ -1327,6 +1328,17 @@ O71_API o71_status_t o71_sfunc_create
         return os;
     }
     sfunc_p = world_p->obj_pa[sfunc_x];
+    sfunc_p->func.cls.finish = noop_object_finish;
+    sfunc_p->func.cls.super_ra = NULL;
+    sfunc_p->func.cls.fix_field_ofs_a = NULL;
+    sfunc_p->func.cls.get_field = get_missing_field;
+    sfunc_p->func.cls.set_field = set_missing_field;
+    kvbag_init(&sfunc_p->func.cls.method_bag, O71_METHOD_ARRAY_LIMIT);
+    sfunc_p->func.cls.super_n = 0;
+    sfunc_p->func.cls.object_size = 0; // this will be set by sfunc_validate
+    sfunc_p->func.cls.dyn_field_ofs = 0;
+    sfunc_p->func.cls.fix_field_n = 0;
+    sfunc_p->func.cls.model = O71M_EXE_CTX;
     sfunc_p->func.call = sfunc_call;
     sfunc_p->func.run = sfunc_run;
     sfunc_p->insn_a = NULL;
@@ -1625,6 +1637,7 @@ O71_API o71_status_t o71_sfunc_validate
         }
     }
     sfunc_p->var_n = var_n;
+    sfunc_p->func.cls.object_size = sizeof(o71_script_function_t) + var_n * sizeof(o71_ref_t);
     M("computed var count: %zu", var_n);
     sfunc_p->valid = 1;
     return O71_OK;
@@ -1961,6 +1974,7 @@ static o71_status_t sfunc_call
     o71_script_function_t * sfunc_p;
     o71_script_exe_ctx_t * sec_p;
     o71_status_t os;
+    o71_obj_index_t ec_ox;
     size_t i, size, csize;
 
     A(o71_model(world_p, func_r) & O71M_SCRIPT_FUNCTION);
@@ -1982,15 +1996,18 @@ static o71_status_t sfunc_call
         return O71_BAD_ARG_COUNT;
     }
 
+    os = alloc_object(world_p, func_r, &ec_ox);
     size = sizeof(o71_script_exe_ctx_t) + sizeof(o71_ref_t) * sfunc_p->var_n;
-    csize = 0;
-    os = redim(world_p, (void * *) &sec_p, &csize, size, 1);
+    //csize = 0;
+    //os = redim(world_p, (void * *) &sec_p, &csize, size, 1);
     if (os)
     {
         M("failed to create exe_ctx for sf%lX (%lu bytes): %s",
           (long) func_r, size, N(os));
         return os;
     }
+    sec_p = world_p->obj_pa[ec_ox];
+    sec_p->exe_ctx.self_r = O71_MOX_TO_REF(ec_ox);
     sec_p->exe_ctx.caller_p = flow_p->exe_ctx_p;
     sec_p->exe_ctx.func_p = &sfunc_p->func;
     sec_p->exe_ctx.size = size;
@@ -2344,7 +2361,9 @@ static o71_status_t str_finish
     str_p = o71_mem_obj(world_p, obj_r);
     M("remove string '%.*s' (mode=%u, m=%zu)",
       (int) str_p->n, str_p->a, str_p->mode, str_p->m);
+#if _DEBUG >= 2
     kvbag_dump(world_p, &world_p->istr_bag);
+#endif
     if (str_p->mode == O71_SM_INTERN)
     {
         o71_kvbag_loc_t loc;
@@ -2356,8 +2375,10 @@ static o71_status_t str_finish
         os = kvbag_delete(world_p, &world_p->istr_bag, &loc);
         M("removed from bag");
         AOS(os);
+#if _DEBUG >= 2
         kvbag_dump(world_p, &world_p->istr_bag);
         M("===================");
+#endif
     }
     if (str_p->m)
     {
@@ -2385,20 +2406,20 @@ static o71_status_t str_intern_cmp
     b_p = o71_mem_obj(world_p, b_r);
     if (a_p->n != b_p->n)
     {
-        M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a,
-          a_p->n > b_p->n ? ">" : "<",
-          (int) b_p->n, b_p->a);
+        // M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a,
+        //   a_p->n > b_p->n ? ">" : "<",
+        //   (int) b_p->n, b_p->a);
         return (a_p->n > b_p->n ? O71_MORE : O71_LESS);
     }
     for (i = 0; i < a_p->n; ++i)
         if (a_p->a[i] != b_p->a[i])
         {
-            M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a,
-              a_p->a[i] > b_p->a[i] ? ">" : "<",
-              (int) b_p->n, b_p->a);
+            // M("'%.*s' %s '%.*s'", (int) a_p->n, a_p->a,
+            //   a_p->a[i] > b_p->a[i] ? ">" : "<",
+            //   (int) b_p->n, b_p->a);
             return (a_p->a[i] > b_p->a[i] ? O71_MORE : O71_LESS);
         }
-    M("'%.*s' == '%.*s'", (int) a_p->n, a_p->a, (int) b_p->n, b_p->a);
+    // M("'%.*s' == '%.*s'", (int) a_p->n, a_p->a, (int) b_p->n, b_p->a);
     return O71_EQUAL;
 }
 

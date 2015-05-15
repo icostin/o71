@@ -135,6 +135,7 @@ enum o71_opcode_e
 #define O71M_FUNCTION           (0x10 | O71M_MEM_OBJ)
 #define O71M_SCRIPT_FUNCTION    (0x20 | O71M_FUNCTION)
 #define O71M_EXCEPTION          (0x40 | O71M_MEM_OBJ)
+#define O71M_EXE_CTX            (0x80 | O71M_MEM_OBJ)
 
 typedef enum o71_status_e o71_status_t;
 typedef intptr_t o71_ref_count_t;
@@ -380,9 +381,11 @@ struct o71_function_s
 
 struct o71_exe_ctx_s
 {
+    o71_mem_obj_t hdr;
     o71_exe_ctx_t * caller_p;
     o71_function_t * func_p;
     size_t size;
+    o71_ref_t self_r;
 };
 
 struct o71_flow_s
