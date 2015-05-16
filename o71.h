@@ -382,16 +382,15 @@ struct o71_function_s
 struct o71_exe_ctx_s
 {
     o71_mem_obj_t hdr;
+    o71_ref_t caller_r;
     o71_exe_ctx_t * caller_p;
-    o71_function_t * func_p;
-    size_t size;
-    o71_ref_t self_r;
 };
 
 struct o71_flow_s
 {
     o71_world_t * world_p;
-    o71_exe_ctx_t * exe_ctx_p;
+    o71_ref_t exe_ctx_r;
+    //o71_exe_ctx_t * exe_ctx_p;
     o71_ref_t value_r;
     o71_ref_t exc_r;
     unsigned int depth;

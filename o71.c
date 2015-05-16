@@ -1256,7 +1256,9 @@ O71_API o71_status_t o71_run
 )
 {
     o71_exe_ctx_t * exe_ctx_p;
+    o71_function_t * func_p;
     o71_status_t os;
+    o71_ref_t exe_ctx_r;
 
     A(steps <= O71_STEPS_MAX);
     flow_p->crt_steps = 0;
@@ -1278,9 +1280,12 @@ O71_API o71_status_t o71_run
             return O71_PENDING;
         }
 
-        exe_ctx_p = flow_p->exe_ctx_p;
-        os = exe_ctx_p->func_p->run(flow_p);
-        A(exe_ctx_p == flow_p->exe_ctx_p);
+        exe_ctx_r = flow_p->exe_ctx_r;
+        exe_ctx_p = o71_mem_obj(flow_p->world_p, exe_ctx_r);
+        func_p = o71_mem_obj(flow_p->world_p, exe_ctx_p->hdr.class_r);
+        os = func_p->run(flow_p);
+        M("flow=%p, func=%p => run -> %s", flow_p, func_p, N(os));
+        A(exe_ctx_r == flow_p->exe_ctx_r);
         switch (os)
         {
         case O71_EXC:
@@ -1289,11 +1294,11 @@ O71_API o71_status_t o71_run
         case O71_OK:
             {
                 //size_t size;
-                flow_p->exe_ctx_p = exe_ctx_p->caller_p;
+                flow_p->exe_ctx_r = exe_ctx_p->caller_r;
                 flow_p->depth -= 1;
                 //size = exe_ctx_p->size;
                 //os = redim(flow_p->world_p, (void * *) &exe_ctx_p, &size, 0, 1);
-                os = o71_deref(flow_p->world_p, exe_ctx_p->self_r);
+                os = o71_deref(flow_p->world_p, exe_ctx_r);
                 AOS(os);
             }
             break;
@@ -1637,8 +1642,10 @@ O71_API o71_status_t o71_sfunc_validate
         }
     }
     sfunc_p->var_n = var_n;
-    sfunc_p->func.cls.object_size = sizeof(o71_script_function_t) + var_n * sizeof(o71_ref_t);
-    M("computed var count: %zu", var_n);
+    sfunc_p->func.cls.object_size = sizeof(o71_script_exe_ctx_t) 
+        + sizeof(o71_ref_t) * sfunc_p->var_n;
+    M("computed var count: %zu; object size: %zu",
+      var_n, sfunc_p->func.cls.object_size);
     sfunc_p->valid = 1;
     return O71_OK;
 }
@@ -1732,7 +1739,7 @@ static void flow_init
 )
 {
     flow_p->world_p = world_p;
-    flow_p->exe_ctx_p = NULL;
+    flow_p->exe_ctx_r = O71R_NULL;
     flow_p->value_r = O71R_NULL;
     flow_p->exc_r = O71R_NULL;
     flow_p->depth = 0;
@@ -1975,7 +1982,7 @@ static o71_status_t sfunc_call
     o71_script_exe_ctx_t * sec_p;
     o71_status_t os;
     o71_obj_index_t ec_ox;
-    size_t i, size, csize;
+    size_t i;
 
     A(o71_model(world_p, func_r) & O71M_SCRIPT_FUNCTION);
     sfunc_p = o71_mem_obj(world_p, func_r);
@@ -1997,20 +2004,13 @@ static o71_status_t sfunc_call
     }
 
     os = alloc_object(world_p, func_r, &ec_ox);
-    size = sizeof(o71_script_exe_ctx_t) + sizeof(o71_ref_t) * sfunc_p->var_n;
-    //csize = 0;
-    //os = redim(world_p, (void * *) &sec_p, &csize, size, 1);
     if (os)
     {
-        M("failed to create exe_ctx for sf%lX (%lu bytes): %s",
-          (long) func_r, size, N(os));
+        M("failed to create exe_ctx for sf%lX: %s", (long) func_r, N(os));
         return os;
     }
     sec_p = world_p->obj_pa[ec_ox];
-    sec_p->exe_ctx.self_r = O71_MOX_TO_REF(ec_ox);
-    sec_p->exe_ctx.caller_p = flow_p->exe_ctx_p;
-    sec_p->exe_ctx.func_p = &sfunc_p->func;
-    sec_p->exe_ctx.size = size;
+    sec_p->exe_ctx.caller_r = flow_p->exe_ctx_r;
     sec_p->calling = 0;
     sec_p->insn_x = 0;
     for (i = 0; i < sfunc_p->var_n; ++i)
@@ -2020,7 +2020,7 @@ static o71_status_t sfunc_call
     for (i = 0; i < sfunc_p->arg_n; ++i)
         sec_p->var_ra[sfunc_p->arg_xa[i]] = arg_ra[i];
 
-    flow_p->exe_ctx_p = &sec_p->exe_ctx;
+    flow_p->exe_ctx_r = O71_MOX_TO_REF(ec_ox);
     flow_p->depth += 1;
 
     return O71_PENDING;
@@ -2072,9 +2072,9 @@ static o71_status_t sfunc_run
     o71_ref_t laa[0x40];
     o71_ref_t * aa;
 
-
-    sec_p = (o71_script_exe_ctx_t *) flow_p->exe_ctx_p;
-    sfunc_p = (o71_script_function_t *) sec_p->exe_ctx.func_p;
+    A(flow_p->exe_ctx_r != O71R_NULL);
+    sec_p = o71_mem_obj(world_p, flow_p->exe_ctx_r);
+    sfunc_p = o71_mem_obj(world_p, sec_p->exe_ctx.hdr.class_r);
     ix = (unsigned int) sec_p->insn_x;
     if (flow_p->exc_r != O71R_NULL) goto l_exc;
     if (sec_p->calling)
@@ -2867,9 +2867,9 @@ static o71_status_t kvbag_array_search
     {
         int c = (a + b) >> 1;
         unsigned int r = cmp(world_p, key_r, kvbag_p->kv_a[c].key_r, ctx);
-        M("intern_cmp(key=%lX, bag_key=%lX) -> %s",
-          key_r, kvbag_p->kv_a[c].key_r,
-          r == O71_EQUAL ? "equal" : (r ? "more" : "less"));
+        // M("intern_cmp(key=%lX, bag_key=%lX) -> %s",
+        //   key_r, kvbag_p->kv_a[c].key_r,
+        //   r == O71_EQUAL ? "equal" : (r ? "more" : "less"));
         switch (r)
         {
         case O71_LESS: b = c - 1; break;
@@ -2877,7 +2877,7 @@ static o71_status_t kvbag_array_search
         case O71_EQUAL:
             loc_p->array.index = a;
             loc_p->match = 1;
-            M("match: key_r=%lX -> index=%u", key_r, a);
+            // M("match: key_r=%lX -> index=%u", key_r, a);
             return O71_OK;
         default:
             M("compare error: %s", N(r));
