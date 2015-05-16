@@ -687,7 +687,7 @@ O71_API o71_status_t o71_world_init
     world_p->object_class.get_field = get_missing_field;
     world_p->object_class.set_field = set_missing_field;
     world_p->object_class.object_size = sizeof(o71_mem_obj_t);
-    world_p->object_class.model = O71M_MEM_OBJ;
+    world_p->object_class.model = O71MI_MEM_OBJ;
     world_p->object_class.super_ra = NULL;
     world_p->object_class.super_n = 0;
     kvbag_init(&world_p->object_class.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -698,7 +698,7 @@ O71_API o71_status_t o71_world_init
     world_p->null_class.get_field = get_missing_field;
     world_p->null_class.set_field = set_missing_field;
     world_p->null_class.object_size = sizeof(o71_mem_obj_t);
-    world_p->null_class.model = O71M_MEM_OBJ;
+    world_p->null_class.model = O71MI_MEM_OBJ;
     world_p->null_class.super_ra = NULL;
     world_p->null_class.super_n = 0;
     kvbag_init(&world_p->null_class.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -709,7 +709,7 @@ O71_API o71_status_t o71_world_init
     world_p->class_class.get_field = get_missing_field;
     world_p->class_class.set_field = set_missing_field;
     world_p->class_class.object_size = sizeof(o71_class_t);
-    world_p->class_class.model = O71M_CLASS;
+    world_p->class_class.model = O71MI_CLASS;
     world_p->class_class.super_ra = NULL;
     world_p->class_class.super_n = 0;
     kvbag_init(&world_p->class_class.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -720,7 +720,7 @@ O71_API o71_status_t o71_world_init
     world_p->string_class.get_field = get_missing_field;
     world_p->string_class.set_field = set_missing_field;
     world_p->string_class.object_size = sizeof(o71_string_t);
-    world_p->string_class.model = O71M_STRING;
+    world_p->string_class.model = O71MI_STRING;
     world_p->string_class.super_ra = NULL;
     world_p->string_class.super_n = 0;
     kvbag_init(&world_p->string_class.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -731,7 +731,7 @@ O71_API o71_status_t o71_world_init
     world_p->small_int_class.get_field = get_missing_field;
     world_p->small_int_class.set_field = set_missing_field;
     world_p->small_int_class.object_size = 0; // not a memory object
-    world_p->small_int_class.model = O71M_SMALL_INT;
+    world_p->small_int_class.model = O71MI_SMALL_INT;
     world_p->small_int_class.super_ra = NULL;
     world_p->small_int_class.super_n = 0;
     kvbag_init(&world_p->small_int_class.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -742,7 +742,7 @@ O71_API o71_status_t o71_world_init
     world_p->function_class.get_field = get_missing_field;
     world_p->function_class.set_field = set_missing_field;
     world_p->function_class.object_size = sizeof(o71_function_t);
-    world_p->function_class.model = O71M_FUNCTION;
+    world_p->function_class.model = O71MI_FUNCTION;
     world_p->function_class.super_ra = NULL;
     world_p->function_class.super_n = 0;
     kvbag_init(&world_p->function_class.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -753,7 +753,7 @@ O71_API o71_status_t o71_world_init
     world_p->script_function_class.get_field = get_missing_field;
     world_p->script_function_class.set_field = set_missing_field;
     world_p->script_function_class.object_size = sizeof(o71_script_function_t);
-    world_p->script_function_class.model = O71M_SCRIPT_FUNCTION;
+    world_p->script_function_class.model = O71MI_SCRIPT_FUNCTION;
     world_p->script_function_class.super_ra = NULL;
     world_p->script_function_class.super_n = 0;
     kvbag_init(&world_p->script_function_class.method_bag,
@@ -765,7 +765,7 @@ O71_API o71_status_t o71_world_init
     world_p->int_add_func.cls.get_field = get_missing_field;               
     world_p->int_add_func.cls.set_field = set_missing_field;               
     world_p->int_add_func.cls.object_size = 0; // instances are not created
-    world_p->int_add_func.cls.model = O71M_FUNCTION;                
+    world_p->int_add_func.cls.model = O71MI_FUNCTION;                
     world_p->int_add_func.cls.super_ra = NULL;                             
     world_p->int_add_func.cls.super_n = 0;                                 
     kvbag_init(&world_p->int_add_func.cls.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -1343,7 +1343,7 @@ O71_API o71_status_t o71_sfunc_create
     sfunc_p->func.cls.object_size = 0; // this will be set by sfunc_validate
     sfunc_p->func.cls.dyn_field_ofs = 0;
     sfunc_p->func.cls.fix_field_n = 0;
-    sfunc_p->func.cls.model = O71M_EXE_CTX;
+    sfunc_p->func.cls.model = O71MI_EXE_CTX;
     sfunc_p->func.call = sfunc_call;
     sfunc_p->func.run = sfunc_run;
     sfunc_p->insn_a = NULL;

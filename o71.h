@@ -128,14 +128,24 @@ enum o71_opcode_e
 };
 
 #define O71M_INVALID            0
-#define O71M_SMALL_INT          1
-#define O71M_MEM_OBJ            2
-#define O71M_CLASS              (4 | O71M_MEM_OBJ)
-#define O71M_STRING             (8 | O71M_MEM_OBJ)
-#define O71M_FUNCTION           (0x10 | O71M_MEM_OBJ)
-#define O71M_SCRIPT_FUNCTION    (0x20 | O71M_FUNCTION)
-#define O71M_EXCEPTION          (0x40 | O71M_MEM_OBJ)
-#define O71M_EXE_CTX            (0x80 | O71M_MEM_OBJ)
+#define O71M_SMALL_INT          (1 << 0)
+#define O71M_MEM_OBJ            (1 << 1)
+#define O71M_STRING             (1 << 2)
+#define O71M_CLASS              (1 << 3)
+#define O71M_EXCEPTION          (1 << 4)
+#define O71M_EXE_CTX            (1 << 5)
+#define O71M_FUNCTION           (1 << 6)
+#define O71M_SCRIPT_FUNCTION    (1 << 7)
+
+#define O71MI_SMALL_INT         (O71M_SMALL_INT)
+#define O71MI_MEM_OBJ           (O71M_MEM_OBJ)
+#define O71MI_STRING            (O71M_STRING | O71MI_MEM_OBJ)
+#define O71MI_CLASS             (O71M_CLASS | O71MI_MEM_OBJ)
+#define O71MI_EXCEPTION         (O71M_EXCEPTION | O71MI_MEM_OBJ)
+#define O71MI_EXE_CTX           (O71M_EXE_CTX | O71MI_MEM_OBJ)
+#define O71MI_FUNCTION          (O71M_FUNCTION | O71MI_CLASS)
+#define O71MI_SCRIPT_FUNCTION   (O71M_SCRIPT_FUNCTION | O71MI_FUNCTION)
+
 
 typedef enum o71_status_e o71_status_t;
 typedef intptr_t o71_ref_count_t;
