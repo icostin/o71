@@ -54,6 +54,8 @@
     (O71_MOX_TO_REF(O71X_FUNCTION_CLASS))
 #define O71R_SCRIPT_FUNCTION_CLASS \
     (O71_MOX_TO_REF(O71X_SCRIPT_FUNCTION_CLASS))
+#define O71R_EXCEPTION_CLASS (O71_MOX_TO_REF(O71X_EXCEPTION_CLASS))
+#define O71R_TYPE_EXC_CLASS (O71_MOX_TO_REF(O71X_TYPE_EXC_CLASS))
 #define O71R_INT_ADD_FUNC (O71_MOX_TO_REF(O71X_INT_ADD_FUNC))
 
 #define O71_BAG_ARRAY 0
@@ -107,6 +109,8 @@ enum o71_builtin_obj_index_e
     O71X_SMALL_INT_CLASS,
     O71X_FUNCTION_CLASS,
     O71X_SCRIPT_FUNCTION_CLASS,
+    O71X_EXCEPTION_CLASS,
+    O71X_TYPE_EXC_CLASS,
     O71X_INT_ADD_FUNC,
 
     O71X__COUNT
@@ -145,7 +149,6 @@ enum o71_opcode_e
 #define O71MI_EXE_CTX           (O71M_EXE_CTX | O71MI_MEM_OBJ)
 #define O71MI_FUNCTION          (O71M_FUNCTION | O71MI_CLASS)
 #define O71MI_SCRIPT_FUNCTION   (O71M_SCRIPT_FUNCTION | O71MI_FUNCTION)
-
 
 typedef enum o71_status_e o71_status_t;
 typedef intptr_t o71_ref_count_t;
@@ -206,17 +209,17 @@ typedef o71_status_t (* o71_finish_f)
  */
 typedef o71_status_t (* o71_get_field_f)
     (
-        o71_flow_t * flow_p, 
-        o71_ref_t obj_r, 
-        o71_ref_t field_r, 
+        o71_flow_t * flow_p,
+        o71_ref_t obj_r,
+        o71_ref_t field_r,
         o71_ref_t * value_p
     );
 
 /* o71_set_field_f **********************************************************/
 /**
  *  Set field function pointer.
- *  @warning The value is supposed to have already its reference count 
- *      incremented 
+ *  @warning The value is supposed to have already its reference count
+ *      incremented
  *  because this function "borrows" the reference from its caller.
  */
 typedef o71_status_t (* o71_set_field_f)
@@ -230,7 +233,7 @@ typedef o71_status_t (* o71_set_field_f)
 /* o71_call_f ***************************************************************/
 /**
  *  Prepares the execution flow to run a function call.
- *  @retval O71_OK 
+ *  @retval O71_OK
  *      function call executed successfully
  *  @retval O71_PENDING
  *      a new execution context pushed on the stack waiting to run
@@ -254,7 +257,7 @@ typedef o71_status_t (* o71_run_f)
 /**
  *  Compares two objects given their references
  */
-typedef o71_status_t (* o71_cmp_f) 
+typedef o71_status_t (* o71_cmp_f)
     (
         o71_world_t * world_p,
         o71_ref_t a_r,
@@ -306,7 +309,7 @@ struct o71_class_s
     o71_kvbag_t method_bag; // instance method bag
     size_t super_n;
     size_t object_size; // instance size
-    size_t dyn_field_ofs; // offset in instance object to kvbag that has 
+    size_t dyn_field_ofs; // offset in instance object to kvbag that has
                           // dynamic fields; 0 for no bag
     size_t fix_field_n;
     uint32_t model;
@@ -336,7 +339,7 @@ struct o71_struct_class_s
     o71_class_t cls;
     o71_field_desc_t * field_desc_a;
     size_t field_n;
-    size_t offset; 
+    size_t offset;
     /*< offset from start of struct instance where the array of fields is
      *  located; this allows us to reuse the struct get/set field functions
      *  for other classes
@@ -494,6 +497,8 @@ struct o71_world_s
     o71_class_t small_int_class;
     o71_class_t function_class;
     o71_class_t script_function_class;
+    o71_class_t exception_class;
+    o71_class_t type_exc_class;
     o71_function_t int_add_func;
 
     unsigned int flow_id_seed;
@@ -622,8 +627,8 @@ O71_API o71_status_t o71_sfunc_create
  *      the world sfunc lives in
  *  @param sfunc_p [in, out]
  *      function to be validated
- *  @retval O71_OK 
- *      function is valid; var_n is updated to reflect the number of 
+ *  @retval O71_OK
+ *      function is valid; var_n is updated to reflect the number of
  *      variables needed
  *  @retval O71_BAD_OPCODE
  *      encountered an instruction with an invalid opcode
@@ -755,7 +760,7 @@ O71_API uint32_t o71_model
 /* o71_cleanup **************************************************************/
 /**
  *  Destroys the chain of objects in the destroy chain.
- * can return any error status as relayed from the finish functions of 
+ * can return any error status as relayed from the finish functions of
  * destroyed objects.
  */
 O71_API o71_status_t o71_cleanup
@@ -767,17 +772,17 @@ O71_API o71_status_t o71_cleanup
 /**
  *  Increments the ref count of an object.
  *  @note on release this always returns O71_OK
- *  @retval O71_OK 
+ *  @retval O71_OK
  *      ref count incremented
  *      this is the only code returned by release builds
  *  @retval O71_REF_COUNT_OVERFLOW
- *      adding a reference causes int overflow; 
+ *      adding a reference causes int overflow;
  *      this should only happen due to a bug from some component;
  *      this code can be returned only in checked or debug builds
  *  @retval O71_OBJ_DESTRUCTING
  *      attempt to increase the ref count of an object from the destroy chain;
  *      this code can be returned only in checked or debug builds
- *  @retval O71_UNUSED_MEM_OBJ_SLOT 
+ *  @retval O71_UNUSED_MEM_OBJ_SLOT
  *      bad reference to unused memory object slot;
  *      thic code can be returned only in checked or debug builds
  */
@@ -789,7 +794,7 @@ O71_API o71_status_t o71_ref
 
 /* o71_deref ****************************************************************/
 /**
-  * Decrements the ref count of an object and if no refs are left then it 
+  * Decrements the ref count of an object and if no refs are left then it
   * adds the object to the destroy chain then cleans up the destroy chain.
   * During the call to finish an object, the objects referenced by the finishing
   * object will lose a reference thus they may become part of the destroy chain.
@@ -826,13 +831,13 @@ O71_API o71_status_t o71_deref
  *      the exception object is stored in flow_p->exc_r
  *  @retval O71_BAD_FUNC_REF
  *      @a func_r is not a valid reference to a function object
- *  @note 
+ *  @note
  *      The idea is to have script functions to just push a context and return
  *      leaving the execution for the o71_run() function; however, for native
  *      functions which run for a negligeable number of steps, the result
  *      can be computed straight from call() without reaching run().
  *  @note
- *      if @a func_r does not point to a function or the function's call() 
+ *      if @a func_r does not point to a function or the function's call()
  *      callback returns an error then this function prepares the appropriate
  *      exception and returns O71_EXC
  */
@@ -896,9 +901,9 @@ O71_API o71_status_t o71_call
 /**
  *  Puts a value in the bag.
  *
- *  @note 
+ *  @note
  *      @a value_r will not get its ref count incremented
- *  @note 
+ *  @note
  *      if there was a value set for the given key, that value will get its
  *      ref count decremented
  *  @retval O71_OK
@@ -932,6 +937,5 @@ O71_API o71_status_t o71_kvbag_get
     o71_ref_t key_r,
     o71_ref_t * value_rp
 );
-
 
 #endif /* _O71_H */

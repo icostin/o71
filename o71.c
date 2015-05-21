@@ -1,7 +1,6 @@
 /* Internal config options */
 #define O71_METHOD_ARRAY_LIMIT 0x80
 
-
 #if _DEBUG
 #include <stdio.h>
 #define M(...) do { printf("%s():%u: ", __FUNCTION__, __LINE__); \
@@ -676,6 +675,8 @@ O71_API o71_status_t o71_world_init
         &world_p->function_class;
     world_p->obj_pa[O71X_SCRIPT_FUNCTION_CLASS] =
         &world_p->script_function_class;
+    world_p->obj_pa[O71X_EXCEPTION_CLASS] = &world_p->exception_class;
+    world_p->obj_pa[O71X_TYPE_EXC_CLASS] = &world_p->type_exc_class;
     world_p->obj_pa[O71X_INT_ADD_FUNC] = &world_p->int_add_func;
 
     world_p->null_object.class_r = O71R_NULL_CLASS;
@@ -759,15 +760,38 @@ O71_API o71_status_t o71_world_init
     kvbag_init(&world_p->script_function_class.method_bag,
                O71_METHOD_ARRAY_LIMIT);
 
+    world_p->exception_class.hdr.class_r = O71R_CLASS_CLASS;
+    world_p->exception_class.hdr.ref_n = 1;
+    world_p->exception_class.finish = noop_object_finish;
+    world_p->exception_class.get_field = get_missing_field;
+    world_p->exception_class.set_field = set_missing_field;
+    world_p->exception_class.object_size = sizeof(o71_dyn_obj_t);
+    world_p->exception_class.model = O71MI_EXCEPTION;
+    world_p->exception_class.super_ra = NULL;
+    world_p->exception_class.super_n = 0;
+    kvbag_init(&world_p->exception_class.method_bag,
+               O71_METHOD_ARRAY_LIMIT);
+
+    world_p->type_exc_class.hdr.class_r = O71R_CLASS_CLASS;
+    world_p->type_exc_class.hdr.ref_n = 1;
+    world_p->type_exc_class.finish = noop_object_finish;
+    world_p->type_exc_class.get_field = get_missing_field;
+    world_p->type_exc_class.set_field = set_missing_field;
+    world_p->type_exc_class.object_size = sizeof(o71_dyn_obj_t);
+    world_p->type_exc_class.model = O71MI_EXCEPTION;
+    world_p->type_exc_class.super_ra = NULL;
+    world_p->type_exc_class.super_n = 0;
+    kvbag_init(&world_p->type_exc_class.method_bag, O71_METHOD_ARRAY_LIMIT);
+
     world_p->int_add_func.cls.hdr.class_r = O71R_FUNCTION_CLASS;
     world_p->int_add_func.cls.hdr.ref_n = 1;
-    world_p->int_add_func.cls.finish = noop_object_finish;                 
-    world_p->int_add_func.cls.get_field = get_missing_field;               
-    world_p->int_add_func.cls.set_field = set_missing_field;               
+    world_p->int_add_func.cls.finish = noop_object_finish;
+    world_p->int_add_func.cls.get_field = get_missing_field;
+    world_p->int_add_func.cls.set_field = set_missing_field;
     world_p->int_add_func.cls.object_size = 0; // instances are not created
-    world_p->int_add_func.cls.model = O71MI_FUNCTION;                
-    world_p->int_add_func.cls.super_ra = NULL;                             
-    world_p->int_add_func.cls.super_n = 0;                                 
+    world_p->int_add_func.cls.model = O71MI_FUNCTION;
+    world_p->int_add_func.cls.super_ra = NULL;
+    world_p->int_add_func.cls.super_n = 0;
     kvbag_init(&world_p->int_add_func.cls.method_bag, O71_METHOD_ARRAY_LIMIT);
     world_p->int_add_func.call = int_add_call;
     world_p->int_add_func.run = null_func_run;
@@ -817,6 +841,16 @@ O71_API o71_status_t o71_world_init
         super_ra[2] = O71R_FUNCTION_CLASS;
         os = class_super_extend(world_p, &world_p->script_function_class,
                                 super_ra, 3);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        os = class_super_extend(world_p, &world_p->exception_class, 
+                                super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        super_ra[1] = O71R_EXCEPTION_CLASS;
+        os = class_super_extend(world_p, &world_p->type_exc_class, super_ra, 2);
         if (os) { M("fail: %s", N(os)); break; }
 
         os = O71_OK;
@@ -1642,7 +1676,7 @@ O71_API o71_status_t o71_sfunc_validate
         }
     }
     sfunc_p->var_n = var_n;
-    sfunc_p->func.cls.object_size = sizeof(o71_script_exe_ctx_t) 
+    sfunc_p->func.cls.object_size = sizeof(o71_script_exe_ctx_t)
         + sizeof(o71_ref_t) * sfunc_p->var_n;
     M("computed var count: %zu; object size: %zu",
       var_n, sfunc_p->func.cls.object_size);
