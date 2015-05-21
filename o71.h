@@ -56,6 +56,7 @@
     (O71_MOX_TO_REF(O71X_SCRIPT_FUNCTION_CLASS))
 #define O71R_EXCEPTION_CLASS (O71_MOX_TO_REF(O71X_EXCEPTION_CLASS))
 #define O71R_TYPE_EXC_CLASS (O71_MOX_TO_REF(O71X_TYPE_EXC_CLASS))
+#define O71R_ARITY_EXC_CLASS (O71_MOX_TO_REF(O71X_ARITY_EXC_CLASS))
 #define O71R_INT_ADD_FUNC (O71_MOX_TO_REF(O71X_INT_ADD_FUNC))
 
 #define O71_BAG_ARRAY 0
@@ -111,6 +112,7 @@ enum o71_builtin_obj_index_e
     O71X_SCRIPT_FUNCTION_CLASS,
     O71X_EXCEPTION_CLASS,
     O71X_TYPE_EXC_CLASS,
+    O71X_ARITY_EXC_CLASS,
     O71X_INT_ADD_FUNC,
 
     O71X__COUNT
@@ -499,6 +501,7 @@ struct o71_world_s
     o71_class_t script_function_class;
     o71_class_t exception_class;
     o71_class_t type_exc_class;
+    o71_class_t arity_exc_class;
     o71_function_t int_add_func;
 
     unsigned int flow_id_seed;

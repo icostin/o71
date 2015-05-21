@@ -677,6 +677,7 @@ O71_API o71_status_t o71_world_init
         &world_p->script_function_class;
     world_p->obj_pa[O71X_EXCEPTION_CLASS] = &world_p->exception_class;
     world_p->obj_pa[O71X_TYPE_EXC_CLASS] = &world_p->type_exc_class;
+    world_p->obj_pa[O71X_ARITY_EXC_CLASS] = &world_p->arity_exc_class;
     world_p->obj_pa[O71X_INT_ADD_FUNC] = &world_p->int_add_func;
 
     world_p->null_object.class_r = O71R_NULL_CLASS;
@@ -782,6 +783,17 @@ O71_API o71_status_t o71_world_init
     world_p->type_exc_class.super_ra = NULL;
     world_p->type_exc_class.super_n = 0;
     kvbag_init(&world_p->type_exc_class.method_bag, O71_METHOD_ARRAY_LIMIT);
+
+    world_p->arity_exc_class.hdr.class_r = O71R_CLASS_CLASS;
+    world_p->arity_exc_class.hdr.ref_n = 1;
+    world_p->arity_exc_class.finish = noop_object_finish;
+    world_p->arity_exc_class.get_field = get_missing_field;
+    world_p->arity_exc_class.set_field = set_missing_field;
+    world_p->arity_exc_class.object_size = sizeof(o71_dyn_obj_t);
+    world_p->arity_exc_class.model = O71MI_EXCEPTION;
+    world_p->arity_exc_class.super_ra = NULL;
+    world_p->arity_exc_class.super_n = 0;
+    kvbag_init(&world_p->arity_exc_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->int_add_func.cls.hdr.class_r = O71R_FUNCTION_CLASS;
     world_p->int_add_func.cls.hdr.ref_n = 1;
