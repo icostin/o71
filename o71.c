@@ -3774,13 +3774,18 @@ static int test ()
         ra[1] = O71_SINT_TO_REF(3);
         ra[2] = O71_SINT_TO_REF(4);
 
+        os = o71_sfunc_append_init(&world, add3_p, 0, O71R_NULL);
+        if (os) TE("add3: init v0, NULL: %s", o71_status_name(os));
+        os = o71_sfunc_append_ret(&world, add3_p, 0);
+        if (os) TE("add3: ret v0: %s", o71_status_name(os));
+
         os = o71_alloc_exc_chain(&world, add3_p, &ecx, &eha, 1);
         if (os) TE("add3: alloc exc chain failed: %s", o71_status_name(os));
 
         eha[0].exc_type_r = O71R_TYPE_EXC_CLASS;
-        eha[0].insn_x = add3_p->insn_n - 1;
+        eha[0].insn_x = add3_p->insn_n - 2;
 
-        os = o71_set_exc_chain(&world, add3_p, iac_ix, iac_ix, ecx);
+        os = o71_set_exc_chain(&world, add3_p, iac_ix, add3_p->insn_n - 2, ecx);
         if (os) TE("add3: set exc chain failed: %s", o71_status_name(os));
 
         os = o71_prep_call(&world.root_flow, add3_r, ra, 3);
