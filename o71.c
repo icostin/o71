@@ -171,6 +171,18 @@ static o71_status_t free_object
     o71_ref_t obj_x
 );
 
+/*  alloc_exc  */
+/**
+ *  Allocates and initializes basic fields in an exception object of given
+ *  class.
+ */
+static o71_status_t alloc_exc
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r,
+    o71_obj_index_t * obj_xp
+);
+
 /*  noop_object_finish  */
 /**
  *  @retval O71_OK
@@ -586,6 +598,8 @@ static void kvbag_rbtree_dump
 #define kvbag_dump(_w, _k) ((void) 0)
 #endif
 
+static uint32_t init_exc_chain_start_xa[2] = { 0, 0 };
+
 /* o71_status_name **********************************************************/
 O71_API char const * o71_status_name
 (
@@ -615,6 +629,8 @@ O71_API char const * o71_status_name
         X(O71_BAD_CONST_INDEX);
         X(O71_BAD_VAR_INDEX);
         X(O71_BAD_INSN_INDEX);
+        X(O71_BAD_EXC_HANDLER_INDEX);
+        X(O71_BAD_EXC_CHAIN_INDEX);
         X(O71_BAD_ARG_COUNT);
         X(O71_CMP_ERROR);
         X(O71_BAD_STRING_REF);
@@ -1397,7 +1413,7 @@ O71_API o71_status_t o71_sfunc_create
     sfunc_p->arg_xa = NULL;
     sfunc_p->const_ra = NULL;
     sfunc_p->exc_handler_a = NULL;
-    sfunc_p->exc_chain_start_xa = NULL;
+    sfunc_p->exc_chain_start_xa = init_exc_chain_start_xa;
     sfunc_p->var_n = 0;
     sfunc_p->arg_n = 0;
     sfunc_p->insn_n = 0;
@@ -1407,7 +1423,9 @@ O71_API o71_status_t o71_sfunc_create
     sfunc_p->const_n = 0;
     sfunc_p->const_m = 0;
     sfunc_p->exc_handler_n = 0;
-    sfunc_p->exc_chain_n = 0;
+    sfunc_p->exc_handler_m = 0;
+    sfunc_p->exc_chain_n = 1;
+    sfunc_p->exc_chain_m = 0;
     sfunc_p->valid = 0;
     os = redim(world_p, (void * *) &sfunc_p->arg_xa, &sfunc_p->arg_n, arg_n,
                sizeof(uint32_t));
@@ -1564,6 +1582,81 @@ O71_API o71_status_t o71_sfunc_append_get_method
     opnd_a[1] = obj_vx;
     opnd_a[2] = name_istr_vx;
 
+    return O71_OK;
+}
+
+/* o71_alloc_exc_chain ******************************************************/
+O71_API o71_status_t o71_alloc_exc_chain
+(
+    o71_world_t * world_p,
+    o71_script_function_t * sfunc_p,
+    uint32_t * exc_chain_xp,
+    o71_exc_handler_t * * exc_handler_ap,
+    size_t exc_handler_n
+)
+{
+    o71_status_t os;
+    size_t ecn, ehn;
+    *exc_chain_xp = sfunc_p->exc_chain_n;
+    ecn = sfunc_p->exc_chain_n + 1;
+    if (ecn >= sfunc_p->exc_chain_m)
+    {
+        size_t new_m;
+        new_m = (ecn + 4) & ~3;
+        os = redim(world_p, (void * *) &sfunc_p->exc_chain_start_xa, 
+                   &sfunc_p->exc_chain_m, new_m, 
+                   sizeof(sfunc_p->exc_chain_start_xa[0]));
+        if (os) { M("ouch: %s", N(os)); return os; }
+        if (sfunc_p->exc_chain_n == 1)
+        {
+            sfunc_p->exc_chain_start_xa[0] = 0;
+            sfunc_p->exc_chain_start_xa[1] = 0;
+        }
+    }
+
+    ehn = sfunc_p->exc_handler_n + exc_handler_n;
+    if (ehn > sfunc_p->exc_handler_m)
+    {
+        size_t ehm = (ehn + 3) &~3;
+        os = redim(world_p, (void * *) &sfunc_p->exc_handler_a,
+                   &sfunc_p->exc_handler_m, ehm, 
+                   sizeof(sfunc_p->exc_handler_a[0]));
+        if (os) { M("ouch: %s", N(os)); return os; }
+    }
+
+    M("ecsxa[%zu]=%u, ehn=%zu", sfunc_p->exc_chain_n, 
+      sfunc_p->exc_chain_start_xa[sfunc_p->exc_chain_n], 
+      sfunc_p->exc_handler_n);
+    A(sfunc_p->exc_chain_start_xa[sfunc_p->exc_chain_n] 
+      == sfunc_p->exc_handler_n);
+
+    *exc_handler_ap = &sfunc_p->exc_handler_a[sfunc_p->exc_handler_n];
+    sfunc_p->exc_handler_n += exc_handler_n;
+
+    sfunc_p->exc_chain_n++;
+    sfunc_p->exc_chain_start_xa[sfunc_p->exc_chain_n] = sfunc_p->exc_handler_n;
+
+    return O71_OK;
+}
+
+/* o71_set_exc_chain ********************************************************/
+O71_API o71_status_t o71_set_exc_chain
+(
+    o71_world_t * world_p,
+    o71_script_function_t * sfunc_p,
+    uint32_t first_insn_x,
+    uint32_t last_insn_x,
+    uint32_t exc_chain_x
+)
+{
+    uint32_t i;
+    if (first_insn_x >= sfunc_p->insn_n || last_insn_x >= sfunc_p->insn_n
+        || first_insn_x > last_insn_x)
+        return O71_BAD_INSN_INDEX;
+    if (exc_chain_x >= sfunc_p->exc_chain_n)
+        return O71_BAD_EXC_CHAIN_INDEX;
+    for (i = first_insn_x; i <= last_insn_x; ++i)
+        sfunc_p->insn_a->exc_chain_x = exc_chain_x;
     return O71_OK;
 }
 
@@ -1954,6 +2047,30 @@ o71_status_t noop_object_finish
     return O71_OK;
 }
 
+/* alloc_exc ****************************************************************/
+static o71_status_t alloc_exc
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r,
+    o71_obj_index_t * obj_xp
+)
+{
+    o71_class_t * class_p;
+    o71_exception_t * exc_p;
+    o71_status_t os;
+
+    class_p = o71_mem_obj(world_p, class_r);
+    (void) class_p;
+    A((class_p->model & O71M_EXCEPTION));
+    os = alloc_object(world_p, class_r, obj_xp);
+    if (os) return os;
+    exc_p = world_p->obj_pa[*obj_xp];
+    kvbag_init(&exc_p->dyn_field_bag, 0x10);
+    exc_p->exe_ctx_r = O71R_NULL;
+    
+    return O71_OK;
+}
+
 /* get_missing_field ********************************************************/
 static o71_status_t get_missing_field
 (
@@ -1997,11 +2114,16 @@ static o71_status_t int_add_call
     size_t arg_n
 )
 {
+    o71_obj_index_t exc_ox;
+    o71_status_t os;
     if (arg_n != 2)
     {
-        // TODO: throw arity exception
+        // throw arity exception
+        os = alloc_exc(flow_p->world_p, O71R_ARITY_EXC_CLASS, &exc_ox);
+        if (os) return os;
+        flow_p->exc_r = O71_MOX_TO_REF(exc_ox);
         flow_p->value_r = O71R_NULL;
-        return O71_OK;
+        return O71_EXC;
     }
     if (O71_IS_REF_TO_SINT(arg_ra[0]) && O71_IS_REF_TO_SINT(arg_ra[1]))
     {
@@ -2009,9 +2131,13 @@ static o71_status_t int_add_call
         flow_p->value_r = (arg_ra[0] - 1 + arg_ra[1]);
         return O71_OK;
     }
-    // TODO: handle int + big_int or big_int + int
-    flow_p->value_r = O71R_NULL;
-    return O71_OK;
+    os = alloc_exc(flow_p->world_p, O71R_TYPE_EXC_CLASS, &exc_ox);
+    flow_p->exc_r = O71_MOX_TO_REF(exc_ox);
+    if (os) return os;
+    return O71_EXC;
+    // // TODO: handle int + big_int or big_int + int
+    // flow_p->value_r = O71R_NULL;
+    // return O71_OK;
 }
 
 /* sfunc_call ***************************************************************/
@@ -3461,6 +3587,9 @@ static int test ()
     o71_ref_t ra[10];
     o71_script_function_t * add3_p;
     uint32_t * arg_vxa;
+    o71_exception_t * exc_p;
+    o71_exc_handler_t * eha;
+    uint32_t iac_ix, ecx;
     char sb[10];
 
     os = o71_world_init(&world, mem_realloc, NULL, SIZE_MAX);
@@ -3594,6 +3723,15 @@ static int test ()
         if (world.root_flow.value_r != O71_SINT_TO_REF(3))
             TE("int_add(1+2) returned ref %lX",
                (long) world.root_flow.value_r);
+        os = o71_prep_call(&world.root_flow, O71R_INT_ADD_FUNC, ra, 1);
+        if (os != O71_EXC) TE("no exc thrown, boo! (%s)", o71_status_name(os));
+        if (!(o71_model(&world, world.root_flow.exc_r) & O71M_EXCEPTION))
+            TE("non-exc thrown, boo!");
+        exc_p = o71_mem_obj(&world, world.root_flow.exc_r);
+        if (exc_p->hdr.class_r != O71R_ARITY_EXC_CLASS)
+            TE("non-arity exc thrown, boo!");
+        o71_deref(&world, world.root_flow.exc_r);
+        world.root_flow.exc_r = O71R_NULL;
 
         os = o71_sfunc_create(&world, &add3_r, 3);
         if (os) TE("add3 function create failed: %s", o71_status_name(os));
@@ -3605,6 +3743,7 @@ static int test ()
         os = o71_sfunc_append_init(&world, add3_p, 3, O71R_INT_ADD_FUNC);
         if (os) TE("add3: init v3, int_add_func: %s", o71_status_name(os));
 
+        iac_ix = add3_p->insn_n;
         os = o71_sfunc_append_call(&world, add3_p, 4, 3, 2, &arg_vxa);
         if (os) TE("add3: call dest=v4, func=v3, arg1, arg2: %s",
                    o71_status_name(os));
@@ -3634,6 +3773,15 @@ static int test ()
         ra[0] = O71_SINT_TO_REF(2);
         ra[1] = O71_SINT_TO_REF(3);
         ra[2] = O71_SINT_TO_REF(4);
+
+        os = o71_alloc_exc_chain(&world, add3_p, &ecx, &eha, 1);
+        if (os) TE("add3: alloc exc chain failed: %s", o71_status_name(os));
+
+        eha[0].exc_type_r = O71R_TYPE_EXC_CLASS;
+        eha[0].insn_x = add3_p->insn_n - 1;
+
+        os = o71_set_exc_chain(&world, add3_p, iac_ix, iac_ix, ecx);
+        if (os) TE("add3: set exc chain failed: %s", o71_status_name(os));
 
         os = o71_prep_call(&world.root_flow, add3_r, ra, 3);
         if (os != O71_PENDING)

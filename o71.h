@@ -88,6 +88,8 @@ enum o71_status_e
     O71_BAD_CONST_INDEX,
     O71_BAD_VAR_INDEX,
     O71_BAD_INSN_INDEX,
+    O71_BAD_EXC_HANDLER_INDEX,
+    O71_BAD_EXC_CHAIN_INDEX,
     O71_BAD_ARG_COUNT,
     O71_CMP_ERROR,
     O71_BAD_STRING_REF,
@@ -157,6 +159,7 @@ typedef intptr_t o71_ref_count_t;
 typedef struct o71_class_s o71_class_t;
 typedef struct o71_dyn_obj_s o71_dyn_obj_t;
 typedef struct o71_exc_handler_s o71_exc_handler_t;
+typedef struct o71_exception_s o71_exception_t;
 typedef struct o71_exe_ctx_s o71_exe_ctx_t;
 typedef struct o71_field_desc_s o71_field_desc_t;
 typedef struct o71_flow_s o71_flow_t;
@@ -386,6 +389,20 @@ struct o71_dyn_obj_s
     o71_ref_t fix_field_a[0];
 };
 
+struct o71_exception_s
+{
+    o71_mem_obj_t hdr;
+    o71_kvbag_t dyn_field_bag;
+    union
+    {
+        o71_ref_t fix_field_a[0];
+        struct
+        {
+            o71_ref_t exe_ctx_r; // context in which the exception occured
+        };
+    };
+};
+
 struct o71_function_s
 {
     //o71_mem_obj_t hdr;
@@ -436,7 +453,7 @@ struct o71_script_function_s
     uint32_t * arg_xa;
     o71_ref_t * const_ra;
     o71_exc_handler_t * exc_handler_a;
-    size_t * exc_chain_start_xa;
+    uint32_t * exc_chain_start_xa; /* exc_chain_m items */
 
     size_t var_n;
     size_t arg_n;
@@ -447,7 +464,9 @@ struct o71_script_function_s
     size_t const_n;
     size_t const_m;
     size_t exc_handler_n;
+    size_t exc_handler_m;
     size_t exc_chain_n;
+    size_t exc_chain_m;
 
     uint8_t valid;
 };
@@ -715,6 +734,46 @@ O71_API o71_status_t o71_sfunc_append_get_method
     uint32_t dest_vx,
     uint32_t obj_vx,
     uint32_t name_istr_vx
+);
+
+/* o71_alloc_exc_chain ******************************************************/
+/**
+ *  Allocates a chain of exception handlers.
+ *  @param world_p [in]
+ *      the world we live in
+ *  @param sfunc_p [in, out]
+ *      scripting function to modify
+ *  @param exc_handler_ap [out]
+ *      receives the allocated array of handlers to be filled in after this call
+ *  @param exc_chain_xp [out]
+ *      receives the index of the allocated chain of handlers
+ *  @param exc_handler_n [in]
+ *      how many handlers to allocate
+ *  @retval O71_OK done
+ *  @retval O71_NO_MEM realloc failed
+ *  @retval O71_MEM_LIMIT reached allocation limit
+ *  @retval O71_ARRAY_LIMIT
+ *  @retval O71_MEM_CORRUPTED
+ *  @retval O71_BUG
+ *  @retval O71_TODO
+ */
+O71_API o71_status_t o71_alloc_exc_chain
+(
+    o71_world_t * world_p,
+    o71_script_function_t * sfunc_p,
+    uint32_t * exc_chain_xp,
+    o71_exc_handler_t * * exc_handler_ap,
+    size_t exc_handler_n
+);
+
+/* o71_set_exc_chain ********************************************************/
+O71_API o71_status_t o71_set_exc_chain
+(
+    o71_world_t * world_p,
+    o71_script_function_t * sfunc_p,
+    uint32_t first_insn_x,
+    uint32_t last_insn_x,
+    uint32_t exc_chain_x
 );
 
 /* o71_check_mem_obj_ref ****************************************************/
