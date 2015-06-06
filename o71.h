@@ -442,7 +442,8 @@ struct o71_insn_s
 struct o71_exc_handler_s
 {
     o71_ref_t exc_type_r;
-    size_t insn_x;
+    uint32_t insn_x;
+    uint32_t exc_var_x;
 };
 
 struct o71_script_function_s

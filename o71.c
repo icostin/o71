@@ -1650,13 +1650,14 @@ O71_API o71_status_t o71_set_exc_chain
 )
 {
     uint32_t i;
+    M("ix:[%u, %u], ecx=%u", first_insn_x, last_insn_x, exc_chain_x);
     if (first_insn_x >= sfunc_p->insn_n || last_insn_x >= sfunc_p->insn_n
         || first_insn_x > last_insn_x)
         return O71_BAD_INSN_INDEX;
     if (exc_chain_x >= sfunc_p->exc_chain_n)
         return O71_BAD_EXC_CHAIN_INDEX;
     for (i = first_insn_x; i <= last_insn_x; ++i)
-        sfunc_p->insn_a->exc_chain_x = exc_chain_x;
+        sfunc_p->insn_a[i].exc_chain_x = exc_chain_x;
     return O71_OK;
 }
 
@@ -2239,7 +2240,8 @@ static o71_status_t sfunc_run
     o71_world_t * world_p = flow_p->world_p;
     o71_script_exe_ctx_t * sec_p;
     o71_script_function_t * sfunc_p;
-    unsigned int ix, ox;
+    unsigned int ix, ox, ecx, ehx, ehx_lim;
+    o71_exception_t * exc_p;
     o71_status_t os;
     o71_ref_t laa[0x40];
     o71_ref_t * aa;
@@ -2413,8 +2415,32 @@ static o71_status_t sfunc_run
         l_exc:
         /* exception thrown; check to see if there's a handler for it
          * that covers current instruction */
-            /* TODO */
-            return O71_EXC;
+            M("got exc r=0x%lX", (long) flow_p->exc_r);
+            A(o71_model(world_p, flow_p->exc_r) & O71M_EXCEPTION);
+            exc_p = o71_mem_obj(world_p, flow_p->exc_r);
+            ecx = sfunc_p->insn_a[ix].exc_chain_x;
+            M("ix=%u, ecx=%u, ehx=[%u, %u)", 
+              ix, ecx, sfunc_p->exc_chain_start_xa[ecx],
+              sfunc_p->exc_chain_start_xa[ecx + 1]);
+            for (ehx = sfunc_p->exc_chain_start_xa[ecx],
+                 ehx_lim = sfunc_p->exc_chain_start_xa[ecx + 1];
+                 ehx < ehx_lim;
+                 ++ehx)
+                if (exc_p->hdr.class_r 
+                    == sfunc_p->exc_handler_a[ehx].exc_type_r)
+                    break;
+            if (ehx == ehx_lim)
+            {
+                M("exc not handled. unwinding...");
+                return O71_EXC;
+            }
+            /* store the exception */
+            sec_p->var_ra[sfunc_p->exc_handler_a[ehx].exc_var_x] 
+                = flow_p->exc_r;
+            flow_p->exc_r = O71R_NULL;
+            ix = sfunc_p->exc_handler_a[ehx].insn_x;
+            M("found handler %u; jump to ix=0x%X", ehx, ix);
+            continue;
         }
         /* move to next instruction */
         ++ix;
@@ -3770,9 +3796,6 @@ static int test ()
 
         os = o71_sfunc_append_ret(&world, add3_p, 4);
         if (os) TE("add3: ret v4: %s", o71_status_name(os));
-        ra[0] = O71_SINT_TO_REF(2);
-        ra[1] = O71_SINT_TO_REF(3);
-        ra[2] = O71_SINT_TO_REF(4);
 
         os = o71_sfunc_append_init(&world, add3_p, 0, O71R_NULL);
         if (os) TE("add3: init v0, NULL: %s", o71_status_name(os));
@@ -3788,10 +3811,12 @@ static int test ()
         os = o71_set_exc_chain(&world, add3_p, iac_ix, add3_p->insn_n - 2, ecx);
         if (os) TE("add3: set exc chain failed: %s", o71_status_name(os));
 
+        ra[0] = O71_SINT_TO_REF(2);
+        ra[1] = O71_SINT_TO_REF(3);
+        ra[2] = O71_SINT_TO_REF(4);
         os = o71_prep_call(&world.root_flow, add3_r, ra, 3);
         if (os != O71_PENDING)
             TE("calling add3(2, 3, 4) failed: %s", o71_status_name(os));
-
         os = o71_run(&world.root_flow, 0, O71_STEPS_MAX);
         if (os != O71_OK)
             TE("running add3(2, 3, 4) failed: %s", o71_status_name(os));
@@ -3799,6 +3824,20 @@ static int test ()
         if (world.root_flow.value_r != O71_SINT_TO_REF(2 + 3 + 4))
             TE("add3(2, 3, 4) returned wrong value ref %lX",
                (long) world.root_flow.value_r);
+
+        ra[0] = O71_SINT_TO_REF(2);
+        ra[1] = O71_SINT_TO_REF(3);
+        ra[2] = O71R_NULL;
+        os = o71_prep_call(&world.root_flow, add3_r, ra, 3);
+        if (os != O71_PENDING)
+            TE("calling add3(2, 3, NULL) failed: %s", o71_status_name(os));
+        os = o71_run(&world.root_flow, 0, O71_STEPS_MAX);
+        if (os != O71_OK)
+            TE("running add3(2, 3, 4) failed: %s", o71_status_name(os));
+        if (world.root_flow.value_r != O71R_NULL)
+            TE("add3(2, 3, 4) returned wrong value ref %lX",
+               (long) world.root_flow.value_r);
+
     }
     while (0);
 
