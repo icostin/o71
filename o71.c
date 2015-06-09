@@ -1790,6 +1790,27 @@ O71_API o71_status_t o71_sfunc_validate
     return O71_OK;
 }
 
+/* o71_superclass_search ****************************************************/
+O71_API ptrdiff_t o71_superclass_search
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r,
+    o71_ref_t superclass_r
+)
+{
+    o71_class_t * class_p;
+    ptrdiff_t a, b, c;
+    class_p = o71_mem_obj(world_p, class_r);
+    for (a = 0, b = class_p->super_n - 1; a <= b; )
+    {
+        c = (a + b) >> 1;
+        if (superclass_r == class_p->super_ra[c]) return c;
+        if (superclass_r < class_p->super_ra[c]) b = c - 1;
+        else a = c + 1;
+    }
+    return -1;
+}
+
 /* log2_rounded_up **********************************************************/
 static uint8_t log2_rounded_up
 (
@@ -2427,7 +2448,10 @@ static o71_status_t sfunc_run
                  ehx < ehx_lim;
                  ++ehx)
                 if (exc_p->hdr.class_r 
-                    == sfunc_p->exc_handler_a[ehx].exc_type_r)
+                    == sfunc_p->exc_handler_a[ehx].exc_type_r
+                    || o71_superclass_search(world_p, exc_p->hdr.class_r,
+                                             sfunc_p->exc_handler_a[ehx]
+                                                .exc_type_r) >= 0)
                     break;
             if (ehx == ehx_lim)
             {
@@ -3805,7 +3829,7 @@ static int test ()
         os = o71_alloc_exc_chain(&world, add3_p, &ecx, &eha, 1);
         if (os) TE("add3: alloc exc chain failed: %s", o71_status_name(os));
 
-        eha[0].exc_type_r = O71R_TYPE_EXC_CLASS;
+        eha[0].exc_type_r = O71R_EXCEPTION_CLASS;
         eha[0].insn_x = add3_p->insn_n - 2;
 
         os = o71_set_exc_chain(&world, add3_p, iac_ix, add3_p->insn_n - 2, ecx);

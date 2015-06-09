@@ -1001,4 +1001,15 @@ O71_API o71_status_t o71_kvbag_get
     o71_ref_t * value_rp
 );
 
+/* o71_superclass_search ****************************************************/
+/**
+ *  Returns the position in the array of superclasses or -1.
+ */
+O71_API ptrdiff_t o71_superclass_search
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r,
+    o71_ref_t superclass_r
+);
+
 #endif /* _O71_H */
