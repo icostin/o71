@@ -687,6 +687,7 @@ O71_API o71_status_t o71_world_init
     world_p->obj_pa[O71X_CLASS_CLASS] = &world_p->class_class;
     world_p->obj_pa[O71X_STRING_CLASS] = &world_p->string_class;
     world_p->obj_pa[O71X_SMALL_INT_CLASS] = &world_p->small_int_class;
+    world_p->obj_pa[O71X_DYN_OBJ_CLASS] = &world_p->dyn_obj_class;
     world_p->obj_pa[O71X_FUNCTION_CLASS] =
         &world_p->function_class;
     world_p->obj_pa[O71X_SCRIPT_FUNCTION_CLASS] =
@@ -753,6 +754,17 @@ O71_API o71_status_t o71_world_init
     world_p->small_int_class.super_ra = NULL;
     world_p->small_int_class.super_n = 0;
     kvbag_init(&world_p->small_int_class.method_bag, O71_METHOD_ARRAY_LIMIT);
+
+    world_p->dyn_obj_class.hdr.class_r = O71R_CLASS_CLASS;
+    world_p->dyn_obj_class.hdr.ref_n = 1;
+    world_p->dyn_obj_class.finish = noop_object_finish;
+    world_p->dyn_obj_class.get_field = get_missing_field;
+    world_p->dyn_obj_class.set_field = set_missing_field;
+    world_p->dyn_obj_class.object_size = sizeof(o71_dyn_obj_t);
+    world_p->dyn_obj_class.model = O71MI_FUNCTION;
+    world_p->dyn_obj_class.super_ra = NULL;
+    world_p->dyn_obj_class.super_n = 0;
+    kvbag_init(&world_p->dyn_obj_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->function_class.hdr.class_r = O71R_CLASS_CLASS;
     world_p->function_class.hdr.ref_n = 1;
@@ -856,6 +868,10 @@ O71_API o71_status_t o71_world_init
         super_ra[0] = O71R_OBJECT_CLASS;
         os = class_super_extend(world_p, &world_p->small_int_class,
                                 super_ra, 1);
+        if (os) { M("fail: %s", N(os)); break; }
+
+        super_ra[0] = O71R_OBJECT_CLASS;
+        os = class_super_extend(world_p, &world_p->dyn_obj_class, super_ra, 1);
         if (os) { M("fail: %s", N(os)); break; }
 
         super_ra[0] = O71R_OBJECT_CLASS;
@@ -1809,6 +1825,30 @@ O71_API ptrdiff_t o71_superclass_search
         else a = c + 1;
     }
     return -1;
+}
+
+/* o71_dyn_obj_create *******************************************************/
+O71_API o71_status_t o71_dyn_obj_create
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r,
+    o71_ref_t * dyn_obj_rp
+)
+{
+    o71_status_t os;
+    o71_obj_index_t dyn_obj_x;
+    o71_dyn_obj_t * dyn_obj_p;
+    os = alloc_object(world_p, class_r, &dyn_obj_x);
+    if (os)
+    {
+        M("alloc_object failed: %s", N(os));
+        return os;
+    }
+    *dyn_obj_rp = O71_MOX_TO_REF(dyn_obj_x);
+    dyn_obj_p = world_p->obj_pa[dyn_obj_x];
+    kvbag_init(&dyn_obj_p->dyn_field_bag, 0x10);
+
+    return O71_TODO;
 }
 
 /* log2_rounded_up **********************************************************/
@@ -3633,7 +3673,7 @@ static int test ()
     o71_world_t world;
     o71_status_t os;
     int rc = 0, i;
-    o71_ref_t r, add3_r, g1_r, g2_r, g3_r, gi_r, add_istr_r;
+    o71_ref_t r, add3_r, g1_r, g2_r, g3_r, gi_r, add_istr_r, dyn_r;
     o71_ref_t ra[10];
     o71_script_function_t * add3_p;
     uint32_t * arg_vxa;
@@ -3765,6 +3805,10 @@ static int test ()
             if (os) TE("deref error for s%lX='%s'", g1_r, sb);
         }
         if (i < 26 * 26) break;
+
+        os = o71_dyn_obj_create(&world, O71R_DYN_OBJ_CLASS, &dyn_r);
+        if (os) TE("dyn_obj_create failed: %s", o71_status_name(os));
+
 
         ra[0] = O71_SINT_TO_REF(1);
         ra[1] = O71_SINT_TO_REF(2);

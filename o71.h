@@ -50,6 +50,7 @@
 #define O71R_CLASS_CLASS (O71_MOX_TO_REF(O71X_CLASS_CLASS))
 #define O71R_STRING_CLASS (O71_MOX_TO_REF(O71X_STRING_CLASS))
 #define O71R_SMALL_INT_CLASS (O71_MOX_TO_REF(O71X_SMALL_INT_CLASS))
+#define O71R_DYN_OBJ_CLASS (O71_MOX_TO_REF(O71X_DYN_OBJ_CLASS))
 #define O71R_FUNCTION_CLASS \
     (O71_MOX_TO_REF(O71X_FUNCTION_CLASS))
 #define O71R_SCRIPT_FUNCTION_CLASS \
@@ -110,6 +111,7 @@ enum o71_builtin_obj_index_e
     O71X_CLASS_CLASS,
     O71X_STRING_CLASS,
     O71X_SMALL_INT_CLASS,
+    O71X_DYN_OBJ_CLASS,
     O71X_FUNCTION_CLASS,
     O71X_SCRIPT_FUNCTION_CLASS,
     O71X_EXCEPTION_CLASS,
@@ -517,6 +519,7 @@ struct o71_world_s
     o71_class_t class_class;
     o71_class_t string_class;
     o71_class_t small_int_class;
+    o71_class_t dyn_obj_class;
     o71_class_t function_class;
     o71_class_t script_function_class;
     o71_class_t exception_class;
@@ -1010,6 +1013,24 @@ O71_API ptrdiff_t o71_superclass_search
     o71_world_t * world_p,
     o71_ref_t class_r,
     o71_ref_t superclass_r
+);
+
+/* o71_dyn_obj_create *******************************************************/
+/**
+ *  Creates a dynamic object.
+ *  @param world_p [in]
+ *      the scripting world
+ *  @param class_r [in]
+ *      class derived from dyn_obj
+ *  @param dyn_obj_rp [out]
+ *      object created
+ *  @retval O71_OK
+ */
+O71_API o71_status_t o71_dyn_obj_create
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r,
+    o71_ref_t * dyn_obj_rp
 );
 
 #endif /* _O71_H */
