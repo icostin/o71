@@ -1,5 +1,6 @@
 /* Internal config options */
 #define O71_METHOD_ARRAY_LIMIT 0x80
+#define O71_DYN_OBJ_FIELD_ARRAY_LIMIT 0x40
 
 #if _DEBUG
 #include <stdio.h>
@@ -12,6 +13,8 @@
 #endif
 
 #include "o71.h"
+
+#define FIELD_OFS(_type, _field) ((uintptr_t) &((_type *) NULL)->_field)
 
 #if O71_CHECKED
 #define A(_cond) \
@@ -709,6 +712,8 @@ O71_API o71_status_t o71_world_init
     world_p->object_class.model = O71MI_MEM_OBJ;
     world_p->object_class.super_ra = NULL;
     world_p->object_class.super_n = 0;
+    world_p->object_class.dyn_field_ofs = 0;
+    world_p->object_class.fix_field_n = 0;
     kvbag_init(&world_p->object_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->null_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -720,6 +725,8 @@ O71_API o71_status_t o71_world_init
     world_p->null_class.model = O71MI_MEM_OBJ;
     world_p->null_class.super_ra = NULL;
     world_p->null_class.super_n = 0;
+    world_p->null_class.dyn_field_ofs = 0;
+    world_p->null_class.fix_field_n = 0;
     kvbag_init(&world_p->null_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->class_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -731,6 +738,8 @@ O71_API o71_status_t o71_world_init
     world_p->class_class.model = O71MI_CLASS;
     world_p->class_class.super_ra = NULL;
     world_p->class_class.super_n = 0;
+    world_p->class_class.dyn_field_ofs = 0;
+    world_p->class_class.fix_field_n = 0;
     kvbag_init(&world_p->class_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->string_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -742,6 +751,8 @@ O71_API o71_status_t o71_world_init
     world_p->string_class.model = O71MI_STRING;
     world_p->string_class.super_ra = NULL;
     world_p->string_class.super_n = 0;
+    world_p->string_class.dyn_field_ofs = 0;
+    world_p->string_class.fix_field_n = 0;
     kvbag_init(&world_p->string_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->small_int_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -753,6 +764,8 @@ O71_API o71_status_t o71_world_init
     world_p->small_int_class.model = O71MI_SMALL_INT;
     world_p->small_int_class.super_ra = NULL;
     world_p->small_int_class.super_n = 0;
+    world_p->small_int_class.dyn_field_ofs = 0;
+    world_p->small_int_class.fix_field_n = 0;
     kvbag_init(&world_p->small_int_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->dyn_obj_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -764,6 +777,8 @@ O71_API o71_status_t o71_world_init
     world_p->dyn_obj_class.model = O71MI_FUNCTION;
     world_p->dyn_obj_class.super_ra = NULL;
     world_p->dyn_obj_class.super_n = 0;
+    world_p->dyn_obj_class.dyn_field_ofs = 0;
+    world_p->dyn_obj_class.fix_field_n = 0;
     kvbag_init(&world_p->dyn_obj_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->function_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -775,6 +790,9 @@ O71_API o71_status_t o71_world_init
     world_p->function_class.model = O71MI_FUNCTION;
     world_p->function_class.super_ra = NULL;
     world_p->function_class.super_n = 0;
+    world_p->function_class.dyn_field_ofs = 
+        FIELD_OFS(o71_dyn_obj_t, dyn_field_bag);;
+    world_p->function_class.fix_field_n = FIELD_OFS(o71_dyn_obj_t, fix_field_a);
     kvbag_init(&world_p->function_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->script_function_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -786,6 +804,8 @@ O71_API o71_status_t o71_world_init
     world_p->script_function_class.model = O71MI_SCRIPT_FUNCTION;
     world_p->script_function_class.super_ra = NULL;
     world_p->script_function_class.super_n = 0;
+    world_p->script_function_class.dyn_field_ofs = 0;
+    world_p->script_function_class.fix_field_n = 0;
     kvbag_init(&world_p->script_function_class.method_bag,
                O71_METHOD_ARRAY_LIMIT);
 
@@ -798,6 +818,8 @@ O71_API o71_status_t o71_world_init
     world_p->exception_class.model = O71MI_EXCEPTION;
     world_p->exception_class.super_ra = NULL;
     world_p->exception_class.super_n = 0;
+    world_p->exception_class.dyn_field_ofs = 0;
+    world_p->exception_class.fix_field_n = 0;
     kvbag_init(&world_p->exception_class.method_bag,
                O71_METHOD_ARRAY_LIMIT);
 
@@ -810,6 +832,8 @@ O71_API o71_status_t o71_world_init
     world_p->type_exc_class.model = O71MI_EXCEPTION;
     world_p->type_exc_class.super_ra = NULL;
     world_p->type_exc_class.super_n = 0;
+    world_p->type_exc_class.dyn_field_ofs = 0;
+    world_p->type_exc_class.fix_field_n = 0;
     kvbag_init(&world_p->type_exc_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->arity_exc_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -821,6 +845,8 @@ O71_API o71_status_t o71_world_init
     world_p->arity_exc_class.model = O71MI_EXCEPTION;
     world_p->arity_exc_class.super_ra = NULL;
     world_p->arity_exc_class.super_n = 0;
+    world_p->arity_exc_class.dyn_field_ofs = 0;
+    world_p->arity_exc_class.fix_field_n = 0;
     kvbag_init(&world_p->arity_exc_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->int_add_func.cls.hdr.class_r = O71R_FUNCTION_CLASS;
@@ -1838,6 +1864,9 @@ O71_API o71_status_t o71_dyn_obj_create
     o71_status_t os;
     o71_obj_index_t dyn_obj_x;
     o71_dyn_obj_t * dyn_obj_p;
+    o71_class_t * class_p;
+    unsigned int i;
+
     os = alloc_object(world_p, class_r, &dyn_obj_x);
     if (os)
     {
@@ -1846,9 +1875,19 @@ O71_API o71_status_t o71_dyn_obj_create
     }
     *dyn_obj_rp = O71_MOX_TO_REF(dyn_obj_x);
     dyn_obj_p = world_p->obj_pa[dyn_obj_x];
-    kvbag_init(&dyn_obj_p->dyn_field_bag, 0x10);
+    class_p = o71_class(world_p, class_r);
+    if (class_p->dyn_field_ofs)
+    {
+        kvbag_init((o71_kvbag_t *) 
+                   ((uint8_t *) dyn_obj_p + class_p->dyn_field_ofs), 0x10);
+    }
 
-    return O71_TODO;
+    for (i = 0; i < class_p->fix_field_n; ++i)
+        *(o71_ref_t *) ((uint8_t *) dyn_obj_p + 
+                        O71_REF_TO_SINT(class_p->fix_field_ofs_a[i].value_r)) 
+            = O71R_NULL;
+
+    return O71_OK;
 }
 
 /* log2_rounded_up **********************************************************/
