@@ -129,6 +129,8 @@ enum o71_opcode_e
     O71O_NOP,
     O71O_INIT, // init dest_vx, src_cx - moves a constant to a local variable
     O71O_GET_METHOD, // get_method dest_vx, obj_vx, name_istr_vx
+    O71O_GET_FIELD, // get_field dest_vx, obj_vx, name_istr_vx
+    O71O_SET_FIELD, // set_field src_vx, obj_vx, name_istr_vx
 
     O71O__CHFLOW, // following are opcodes that can change the flow
     O71O_CALL = O71O__CHFLOW, // call dest_vx, func_vx, arg_n, arg0_vx, ... arg<arg_n - 1>_vx
@@ -380,8 +382,10 @@ struct o71_kvbag_loc_s
             unsigned int last_x;
         } rbtree;
     };
-    uint8_t match;
     o71_status_t cmp_error;
+#if O71_CHECKED
+    o71_status_t status;
+#endif
 };
 
 struct o71_dyn_obj_s
@@ -740,6 +744,32 @@ O71_API o71_status_t o71_sfunc_append_get_method
     uint32_t name_istr_vx
 );
 
+/* o71_sfunc_append_get_field ***********************************************/
+/**
+ *  Appends a GET_FIELD instruction.
+ */
+O71_API o71_status_t o71_sfunc_append_get_field
+(
+    o71_world_t * world_p,
+    o71_script_function_t * sfunc_p,
+    uint32_t dest_vx,
+    uint32_t obj_vx,
+    uint32_t name_istr_vx
+);
+
+/* o71_sfunc_append_set_field ***********************************************/
+/**
+ *  Appends a SET_FIELD instruction.
+ */
+O71_API o71_status_t o71_sfunc_append_set_field
+(
+    o71_world_t * world_p,
+    o71_script_function_t * sfunc_p,
+    uint32_t src_vx,
+    uint32_t obj_vx,
+    uint32_t name_istr_vx
+);
+
 /* o71_alloc_exc_chain ******************************************************/
 /**
  *  Allocates a chain of exception handlers.
@@ -1032,5 +1062,28 @@ O71_API o71_status_t o71_dyn_obj_create
     o71_ref_t class_r,
     o71_ref_t * dyn_obj_rp
 );
+
+/* o71_dyn_obj_get **********************************************************/
+O71_API o71_status_t o71_dyn_obj_get
+(
+    o71_world_t * world_p,
+    o71_ref_t obj_r,
+    o71_ref_t field_istr_r,
+    o71_ref_t * value_rp
+);
+
+/* o71_dyn_obj_set **********************************************************/
+/**
+ *  Sets a field in the given dynamic object.
+ */
+O71_API o71_status_t o71_dyn_obj_set
+(
+    o71_world_t * world_p,
+    o71_ref_t obj_r,
+    o71_ref_t field_istr_r,
+    o71_ref_t value_r
+);
+
+
 
 #endif /* _O71_H */
