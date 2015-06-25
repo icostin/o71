@@ -1,6 +1,14 @@
 #ifndef _O71_H
 #define _O71_H
 
+#if _DEBUG
+#   undef O71_CHECKED
+#   define O71_CHECKED 1
+#   ifndef O71_DEBUG
+#       define O71_DEBUG 1
+#   endif
+#endif
+
 #include <limits.h>
 #include <stdarg.h>
 #include <stddef.h>
@@ -822,8 +830,8 @@ O71_API o71_status_t o71_check_mem_obj_ref
     o71_ref_t obj_r
 );
 
-/* o71_mem_obj ******************************************************************/
-O71_INLINE void * o71_mem_obj
+/* o71_obj_ptr ******************************************************************/
+O71_INLINE void * o71_obj_ptr
 (
     o71_world_t * world_p,
     o71_ref_t mem_obj_r
