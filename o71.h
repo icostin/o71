@@ -44,6 +44,7 @@
 #endif
 
 #define O71_STEPS_MAX INT32_MAX
+#define O71_VAR_LIMIT 0x10000000
 
 #define O71_IS_REF_TO_SINT(_ref) (((_ref) & 1))
 #define O71_IS_REF_TO_MO(_ref) (!((_ref) & 1))
@@ -103,6 +104,7 @@ enum o71_status_e
     O71_CMP_ERROR,
     O71_BAD_STRING_REF,
     O71_BAD_RO_STRING_REF,
+    O71_BAD_INTERN_STRING_REF,
 
     O71_FATAL,
     O71_MEM_CORRUPTED = O71_FATAL,
@@ -145,6 +147,13 @@ enum o71_opcode_e
     O71O__NO_FALL,
     O71O_RETURN = O71O__NO_FALL, // ret value_vx
     O71O_JUMP,
+};
+
+enum o71_sec_mode_e
+{
+    O71_SECM_RUN,
+    O71_SECM_STORE_RET_VAL,
+    O71_SECM_IGNORE_RET_VAL,
 };
 
 #define O71M_INVALID            0
@@ -196,13 +205,9 @@ typedef uintptr_t o71_obj_index_t;
  *  |nnnnnnnnn|1| - small int nnnnnnn
  *  +---------+-+
  *
- *  +-------+-+-+
- *  |nnnnnnn|0|0| - ref counted memory object
- *  +-------+-+-+
- *
- *  +-------+-+-+
- *  |nnnnnnn|1|0| - permanent memory object
- *  +-------+-+-+
+ *  +---------+-+
+ *  |nnnnnnnnn|0| - memory object
+ *  +---------+-+
  */
 typedef uintptr_t o71_ref_t;
 
@@ -490,7 +495,8 @@ struct o71_script_exe_ctx_s
 {
     o71_exe_ctx_t exe_ctx;
     uint32_t insn_x;
-    uint8_t calling;
+    uint32_t ret_value_vx;
+    uint8_t mode;
     o71_ref_t var_ra[0];
 };
 
@@ -888,7 +894,7 @@ O71_API o71_status_t o71_cleanup
  *      this code can be returned only in checked or debug builds
  *  @retval O71_UNUSED_MEM_OBJ_SLOT
  *      bad reference to unused memory object slot;
- *      thic code can be returned only in checked or debug builds
+ *      this code can be returned only in checked or debug builds
  */
 O71_API o71_status_t o71_ref
 (
@@ -908,7 +914,7 @@ O71_API o71_status_t o71_ref
   *     bad reference to unused memory object slot;
   *     this code can be returned only in checked or debug builds
   * @retval O71_MEM_CORRUPTED
-  *     allocator detects some corurption while freeing memory for destroyed
+  *     allocator detects some corruption while freeing memory for destroyed
   *     objects
   * @retval O71_BUG
   *     some assertion failed
@@ -1083,6 +1089,15 @@ O71_API o71_status_t o71_dyn_obj_get
 /* o71_dyn_obj_set **********************************************************/
 /**
  *  Sets a field in the given dynamic object.
+ *  @param world_p [in]
+ *  @param obj_r [in]
+ *  @param field_istr_r [in]
+ *      intern string representing field name
+ *  @param value_r [in]
+ *  @retval O71_OK success
+ *  @warning 
+ *      @a field_istr_r must be an intern string otherwise an assertion will 
+ *      occur in checked/debug builds and undefined behaviour in release
  */
 O71_API o71_status_t o71_dyn_obj_set
 (
@@ -1092,6 +1107,25 @@ O71_API o71_status_t o71_dyn_obj_set
     o71_ref_t value_r
 );
 
+/* o71_istr_check ***********************************************************/
+/**
+ *  Checks if the given reference points to an internalized string.
+ *  @retval O71_OK 
+ *      ref points to intern string
+ *  @retval O71_NOT_MEM_OBJ_REF
+ *      not a reference to a memory object
+ *  @retval O71_UNUSED_MEM_OBJ_SLOT
+ *      bad reference to an unused memory object slot
+ *  @retval O71_BAD_STRING_REF
+ *      valid reference to a non-string object
+ *  @retval O71_BAD_INTERN_STRING_REF
+ *      valid reference to a string that is not internalized
+ */
+O71_API o71_status_t o71_istr_check
+(
+    o71_world_t * world_p,
+    o71_ref_t obj_r
+);
 
 
 #endif /* _O71_H */

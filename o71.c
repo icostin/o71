@@ -12,6 +12,11 @@
 #define M(...) ((void) 0)
 #endif
 
+#if O71_DEBUG >= 2
+#define M2 M
+#else
+#define M2(...) ((void) 0)
+#endif
 
 #define FIELD_OFS(_type, _field) ((uintptr_t) &((_type *) NULL)->_field)
 
@@ -54,6 +59,8 @@ static uint8_t log2_rounded_up
 
 /* redim */
 /**
+ *  Redim, steadym, gom! Redim your soul!
+ *  Redimensionate a memory block.
  *  @retval O71_OK
  *  @retval O71_NO_MEM
  *  @retval O71_MEM_LIMIT
@@ -605,6 +612,36 @@ static o71_status_t class_super_extend
     size_t super_n
 );
 
+/*  set_var  */
+/**
+ *  Dereferences old value stored in destination and references the source
+ *  value and stores it in destination.
+ *  @retval O71_OK only value for release builds
+ *  @retval O71_REF_COUNT_OVERFLOW
+ *      adding a reference causes int overflow;
+ *      this should only happen due to a bug from some component;
+ *      this code can be returned only in checked or debug builds
+ *  @retval O71_OBJ_DESTRUCTING
+ *      attempt to increase the ref count of an object from the destroy chain;
+ *      this code can be returned only in checked or debug builds
+ *  @retval O71_UNUSED_MEM_OBJ_SLOT
+ *      bad reference to unused memory object slot;
+ *      this code can be returned only in checked or debug builds
+  * @retval O71_MEM_CORRUPTED
+  *     allocator detects some corruption while freeing memory for destroyed
+  *     objects
+  * @retval O71_BUG
+  *     some assertion failed
+  *     this code can be returned only in checked or debug builds
+ *
+ */
+O71_INLINE o71_status_t set_var
+(
+    o71_world_t * world_p,
+    o71_ref_t * dest_rp,
+    o71_ref_t src_r
+);
+
 #if O71_DEBUG
 static void obj_dump
 (
@@ -675,6 +712,7 @@ O71_API char const * o71_status_name
         X(O71_CMP_ERROR);
         X(O71_BAD_STRING_REF);
         X(O71_BAD_RO_STRING_REF);
+        X(O71_BAD_INTERN_STRING_REF);
 
         X(O71_MEM_CORRUPTED);
         X(O71_REF_COUNT_OVERFLOW);
@@ -811,13 +849,12 @@ O71_API o71_status_t o71_world_init
     world_p->dyn_obj_class.get_field = get_dyn_obj_field;
     world_p->dyn_obj_class.set_field = set_dyn_obj_field;
     world_p->dyn_obj_class.object_size = sizeof(o71_dyn_obj_t);
-    world_p->dyn_obj_class.model = O71MI_FUNCTION;
+    world_p->dyn_obj_class.model = O71MI_MEM_OBJ;
     world_p->dyn_obj_class.super_ra = NULL;
     world_p->dyn_obj_class.super_n = 0;
-    world_p->dyn_obj_class.dyn_field_ofs = 
+    world_p->dyn_obj_class.dyn_field_ofs =
         FIELD_OFS(o71_dyn_obj_t, dyn_field_bag);
-    world_p->dyn_obj_class.fix_field_n = 
-        FIELD_OFS(o71_dyn_obj_t, fix_field_a);
+    world_p->dyn_obj_class.fix_field_n = 0;
     kvbag_init(&world_p->dyn_obj_class.method_bag, O71_METHOD_ARRAY_LIMIT);
 
     world_p->function_class.hdr.class_r = O71R_CLASS_CLASS;
@@ -856,9 +893,9 @@ O71_API o71_status_t o71_world_init
     world_p->exception_class.model = O71MI_EXCEPTION;
     world_p->exception_class.super_ra = NULL;
     world_p->exception_class.super_n = 0;
-    world_p->exception_class.dyn_field_ofs = 
-        FIELD_OFS(o71_dyn_obj_t, fix_field_a);
-    world_p->exception_class.fix_field_n = 1;
+    world_p->exception_class.dyn_field_ofs =
+        FIELD_OFS(o71_dyn_obj_t, dyn_field_bag);
+    world_p->exception_class.fix_field_n = 0;
     kvbag_init(&world_p->exception_class.method_bag,
                O71_METHOD_ARRAY_LIMIT);
 
@@ -906,6 +943,8 @@ O71_API o71_status_t o71_world_init
     do
     {
         o71_ref_t int_add_str_r;
+        o71_ref_t exe_ctx_isr;
+
         o71_ref_t super_ra[3];
         os = o71_ics(world_p, &int_add_str_r, "add");
         if (os) { M("fail: %s", N(os)); break; }
@@ -953,9 +992,21 @@ O71_API o71_status_t o71_world_init
         if (os) { M("fail: %s", N(os)); break; }
 
         super_ra[0] = O71R_OBJECT_CLASS;
+        super_ra[1] = O71R_DYN_OBJ_CLASS;
         os = class_super_extend(world_p, &world_p->exception_class,
-                                super_ra, 1);
+                                super_ra, 2);
         if (os) { M("fail: %s", N(os)); break; }
+
+        os = o71_ics(world_p, &exe_ctx_isr, "exe_ctx");
+        if (os) { M("fail: %s", N(os)); break; }
+        os = redim(world_p,
+                   (void * *) &world_p->exception_class.fix_field_ofs_a,
+                   &world_p->exception_class.fix_field_n,
+                   1, sizeof(o71_ref_t));
+        if (os) { M("fail: %s", N(os)); break; }
+        world_p->exception_class.fix_field_ofs_a[0].key_r = exe_ctx_isr;
+        world_p->exception_class.fix_field_ofs_a[0].value_r =
+            FIELD_OFS(o71_exception_t, exe_ctx_r);
 
         super_ra[0] = O71R_OBJECT_CLASS;
         super_ra[1] = O71R_EXCEPTION_CLASS;
@@ -994,7 +1045,7 @@ O71_API o71_status_t o71_world_finish
         world_p->mem_obj_pa[obj_x]->enc_destroy_next_x =
             ~world_p->destroy_list_head_x;
         world_p->destroy_list_head_x = obj_x;
-        M("queueing for destruction: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
+        M2("queueing for destruction: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
     }
     os = o71_cleanup(world_p);
     AOS(os);
@@ -1083,8 +1134,8 @@ O71_API o71_status_t o71_ref
         return O71_REF_COUNT_OVERFLOW;
 #endif
     world_p->mem_obj_pa[obj_x]->ref_n += 1;
-    M("obref_%lX.ref -> %lX", (long) obj_r,
-      (long) world_p->mem_obj_pa[obj_x]->ref_n);
+    M2("obref_%lX.ref -> %lX", (long) obj_r,
+       (long) world_p->mem_obj_pa[obj_x]->ref_n);
     return O71_OK;
 }
 
@@ -1108,7 +1159,7 @@ O71_API o71_status_t o71_deref
     if (world_p->mem_obj_pa[obj_x]->ref_n > 1)
     {
         world_p->mem_obj_pa[obj_x]->ref_n -= 1;
-        M("obref_%lX.deref -> %lX", (long) obj_r,
+        M2("obref_%lX.deref -> %lX", (long) obj_r,
           (long) world_p->mem_obj_pa[obj_x]->ref_n);
         return O71_OK;
     }
@@ -1116,14 +1167,14 @@ O71_API o71_status_t o71_deref
     /* ignore derefs for objects in the destroy chain */
     if ((world_p->mem_obj_pa[obj_x]->ref_n | (intptr_t) -!obj_x) < 0)
     {
-        M("obref_%lX.deref -> already in destroy list", (long) obj_r);
+        M2("obref_%lX.deref -> already in destroy list", (long) obj_r);
         return O71_OK;
     }
     /* chain the object to the destroy list */
     world_p->mem_obj_pa[obj_x]->enc_destroy_next_x =
         ~world_p->destroy_list_head_x;
     world_p->destroy_list_head_x = obj_x;
-        M("obref_%lX.deref -> queue for destruction", (long) obj_r);
+    M2("obref_%lX.deref -> queue for destruction", (long) obj_r);
     //M("obj_x=%lX", (long) obj_x);
     return o71_cleanup(world_p);
 }
@@ -1158,8 +1209,8 @@ O71_API o71_status_t o71_cleanup
         class_p = world_p->obj_pa[O71_REF_TO_MOX(mo_p->class_r)];
         A(class_p); A(class_p->finish);
         os = class_p->finish(world_p, O71_MOX_TO_REF(obj_x));
-        M("obref_%lX(class:obref_%lX) finish: %s", (long) O71_MOX_TO_REF(obj_x),
-          (long) mo_p->class_r, N(os));
+        M2("obref_%lX(class:obref_%lX) finish: %s",
+           (long) O71_MOX_TO_REF(obj_x), (long) mo_p->class_r, N(os));
         if (os) break;
         os = o71_deref(world_p, mo_p->class_r);
         if (os)
@@ -1171,7 +1222,7 @@ O71_API o71_status_t o71_cleanup
         mo_p->object_size = class_p->object_size;
         mo_p->enc_destroy_next_x = ~free_head_x;
         free_head_x = obj_x;
-        M("queue for mem free: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
+        M2("queue for mem free: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
     }
     M("cleanup mem");
     while (os == O71_OK && free_head_x)
@@ -1191,7 +1242,7 @@ O71_API o71_status_t o71_cleanup
 #if O71_CHECKED
     if (os)
     {
-        M("free_object_index(obref_%lX) failed: %s", 
+        M("free_object_index(obref_%lX) failed: %s",
           (long) O71_MOX_TO_REF(obj_x), N(os));
         return os;
     }
@@ -1308,13 +1359,13 @@ O71_API o71_status_t o71_str_intern
     o71_string_t * str_p;
     o71_ref_t istr_r;
     o71_status_t os;
-    M("str_intern(obref_%lX)", (long) str_r);
+    M2("str_intern(obref_%lX)", (long) str_r);
     str_p = o71_obj_ptr(world_p, str_r);
 
     if (!(o71_model(world_p, str_r) & O71M_STRING))
     {
-        M("obref_%lX is not a string (model: 0x%X)",
-          (long) str_r, o71_model(world_p, str_r));
+        M2("obref_%lX is not a string (model: 0x%X)",
+           (long) str_r, o71_model(world_p, str_r));
         return O71_BAD_STRING_REF;
     }
     str_p = o71_obj_ptr(world_p, str_r);
@@ -1371,7 +1422,7 @@ O71_API o71_status_t o71_ics
     if (os) return os;
 
     os = o71_str_intern(world_p, rostr_r, str_rp);
-    M("str(obref_%lX)=rocs('%s') -> is(obref_%lX): %s", 
+    M("str(obref_%lX)=rocs('%s') -> is(obref_%lX): %s",
       (long) rostr_r, cstr_a, (long) *str_rp, N(os));
     dos = o71_deref(world_p, rostr_r);
 #if O71_CHECKED
@@ -1470,7 +1521,6 @@ O71_API o71_status_t o71_run
     }
     return flow_p->exc_r == O71R_NULL ? O71_OK : O71_EXC;
 }
-
 
 /* o71_sfunc_create *********************************************************/
 O71_API o71_status_t o71_sfunc_create
@@ -1786,7 +1836,7 @@ O71_API o71_status_t o71_sfunc_validate
     for (i = 0; i < sfunc_p->arg_n; ++i)
     {
         vx = sfunc_p->arg_xa[i];
-        if (vx >= 0x10000000)
+        if (vx >= O71_VAR_LIMIT)
         {
             M("sfunc=%p: arg %zu has invalid var index 0x%zu",
               sfunc_p, i, vx);
@@ -1822,6 +1872,8 @@ O71_API o71_status_t o71_sfunc_validate
             X(O71O_RETURN, 1, 0, 0);
             X(O71O_CALL, 2, 0, 1);
             X(O71O_GET_METHOD, 3, 0, 0);
+            X(O71O_GET_FIELD, 3, 0, 0);
+            X(O71O_SET_FIELD, 3, 0, 0);
         default:
             M("sfunc=%p: insn %zu: bad opcode 0x%X",
               sfunc_p, i, sfunc_p->insn_a[i].opcode);
@@ -1853,7 +1905,7 @@ O71_API o71_status_t o71_sfunc_validate
         for (j = 0; j < nv; ++j, ++opnd_x)
         {
             vx = sfunc_p->opnd_a[opnd_x];
-            if (vx >= 0x10000000)
+            if (vx >= O71_VAR_LIMIT)
             {
                 M("sfunc=%p: operand %zu has invalid var index 0x%zX",
                   sfunc_p, opnd_x, vx);
@@ -1878,7 +1930,7 @@ O71_API o71_status_t o71_sfunc_validate
             for (j = 0; j < nvv; ++j, ++opnd_x)
             {
                 vx = sfunc_p->opnd_a[opnd_x];
-                if (vx >= 0x10000000)
+                if (vx >= O71_VAR_LIMIT)
                 {
                     M("sfunc=%p: operand %zu has invalid var index 0x%zX",
                       sfunc_p, opnd_x, vx);
@@ -1932,6 +1984,8 @@ O71_API o71_status_t o71_dyn_obj_create
     o71_class_t * class_p;
     unsigned int i;
 
+    class_p = o71_obj_ptr(world_p, class_r);
+    A(class_p->model & O71M_MEM_OBJ);
     os = alloc_object(world_p, class_r, &dyn_obj_x);
     if (os)
     {
@@ -1940,9 +1994,12 @@ O71_API o71_status_t o71_dyn_obj_create
     }
     *dyn_obj_rp = O71_MOX_TO_REF(dyn_obj_x);
     dyn_obj_p = world_p->obj_pa[dyn_obj_x];
-    class_p = o71_class(world_p, class_r);
+    M("class obref_%lX: dfo=0x%lX", class_r, class_p->dyn_field_ofs);
     if (class_p->dyn_field_ofs)
     {
+        M("init dyn field bag %p at ofs 0x%lX in dyn obj at obref_%lX",
+          ((uint8_t *) dyn_obj_p + class_p->dyn_field_ofs),
+          class_p->dyn_field_ofs, *dyn_obj_rp);
         kvbag_init((o71_kvbag_t *)
                    ((uint8_t *) dyn_obj_p + class_p->dyn_field_ofs), 0x10);
     }
@@ -1964,7 +2021,56 @@ O71_API o71_status_t o71_dyn_obj_get
     o71_ref_t * value_rp
 )
 {
-    return O71_TODO;
+    o71_kvbag_loc_t loc;
+    o71_kvbag_t * kvbag_p;
+    o71_mem_obj_t * obj_p;
+    o71_class_t * class_p;
+    intptr_t a, b, c;
+    o71_status_t os;
+
+    A(o71_istr_check(world_p, field_istr_r) == O71_OK);
+
+    class_p = o71_class(world_p, obj_r);
+    if (!(class_p->model & O71M_MEM_OBJ))
+    {
+        /* non-memory objects don't have fields */
+        return O71_MISSING;
+    }
+
+    obj_p = o71_obj_ptr(world_p, obj_r);
+    a = 0;
+    b = (intptr_t) class_p->fix_field_n - 1;
+    while (a <= b)
+    {
+        o71_ref_t key_r;
+        c = (a + b) >> 1;
+        key_r = class_p->fix_field_ofs_a[c].key_r;
+        if (field_istr_r == key_r)
+        {
+            /* found fixed field */
+            *value_rp = class_p->fix_field_ofs_a[c].value_r;
+            return O71_OK;
+        }
+        if (field_istr_r < key_r) b = c - 1;
+        else a = c + 1;
+    }
+    /* put field in the dynamic bag */
+    if (!class_p->dyn_field_ofs)
+    {
+        /* no bag for dynamic fields; return field is missing */
+        return O71_MISSING;
+    }
+
+    kvbag_p = (o71_kvbag_t *) ((uint8_t *) obj_p + class_p->dyn_field_ofs);
+    M2("obref_%lX dfo=0x%lX", (long) obj_r, (long) class_p->dyn_field_ofs);
+    os = kvbag_search(world_p, kvbag_p, field_istr_r, ref_cmp, NULL, &loc);
+    if (os == O71_OK)
+    {
+        *value_rp = kvbag_get_loc_value(world_p, kvbag_p, &loc);
+        M2("obref_%lX.obref_%lX -> obref_%lX", obj_r, field_istr_r, *value_rp);
+    }
+
+    return os;
 }
 
 /* o71_dyn_obj_set **********************************************************/
@@ -1976,7 +2082,73 @@ O71_API o71_status_t o71_dyn_obj_set
     o71_ref_t value_r
 )
 {
-    return O71_TODO;
+    o71_mem_obj_t * obj_p;
+    o71_class_t * class_p;
+    intptr_t a, b, c;
+    o71_status_t os;
+
+    A(o71_istr_check(world_p, field_istr_r) == O71_OK);
+
+    class_p = o71_class(world_p, obj_r);
+    if (!(class_p->model & O71M_MEM_OBJ))
+    {
+        /* non-memory objects don't have fields */
+        return O71_MISSING;
+    }
+
+    obj_p = o71_obj_ptr(world_p, obj_r);
+    a = 0;
+    b = (intptr_t) class_p->fix_field_n - 1;
+    while (a <= b)
+    {
+        o71_ref_t key_r;
+        c = (a + b) >> 1;
+        key_r = class_p->fix_field_ofs_a[c].key_r;
+        if (field_istr_r == key_r)
+        {
+            /* found fixed field */
+            o71_ref_t * value_rp;
+            value_rp = (o71_ref_t *) ((uint8_t *) obj_p
+                + (intptr_t) class_p->fix_field_ofs_a[c].value_r);
+            os = set_var(world_p, value_rp, value_r);
+            AOS(os);
+            return O71_OK;
+        }
+        if (field_istr_r < key_r) b = c - 1;
+        else a = c + 1;
+    }
+    /* put field in the dynamic bag */
+    if (!class_p->dyn_field_ofs)
+    {
+        /* no bag for dynamic fields; return field is missing */
+        return O71_MISSING;
+    }
+
+    M2("obref_%lX dfo=0x%lX", (long) obj_r, (long) class_p->dyn_field_ofs);
+    os = kvbag_put(world_p, (o71_kvbag_t *)
+                   ((uint8_t *) obj_p + class_p->dyn_field_ofs),
+                   field_istr_r, value_r, ref_cmp, NULL);
+    return os;
+}
+
+/* o71_istr_check ***********************************************************/
+O71_API o71_status_t o71_istr_check
+(
+    o71_world_t * world_p,
+    o71_ref_t obj_r
+)
+{
+    uint32_t model;
+    model = o71_model(world_p, obj_r);
+    if ((model & O71M_STRING))
+    {
+        o71_string_t * str_p;
+        str_p = o71_obj_ptr(world_p, obj_r);
+        return str_p->mode == O71_SM_INTERN
+            ? O71_OK : O71_BAD_INTERN_STRING_REF;
+    }
+    if (model == O71M_INVALID) return O71_UNUSED_MEM_OBJ_SLOT;
+    return (model & O71M_MEM_OBJ) ? O71_BAD_STRING_REF : O71_NOT_MEM_OBJ_REF;
 }
 
 /* log2_rounded_up **********************************************************/
@@ -2122,9 +2294,9 @@ static o71_status_t alloc_object_index
     *obj_xp = world_p->free_list_head_x;
     world_p->free_list_head_x = DECODE_FREE_OBJECT_SLOT(
         world_p->enc_next_free_xa[world_p->free_list_head_x]);
-    M("allocated=obref_%lX, free_head=obref_%lX, obj_n=%lX",
-      (long) O71_MOX_TO_REF(*obj_xp), 
-      (long) O71_MOX_TO_REF(world_p->free_list_head_x), (long) world_p->obj_n);
+    M2("allocated=obref_%lX, free_head=obref_%lX, obj_n=%lX",
+       (long) O71_MOX_TO_REF(*obj_xp),
+       (long) O71_MOX_TO_REF(world_p->free_list_head_x), (long) world_p->obj_n);
 
     return O71_OK;
 }
@@ -2219,7 +2391,7 @@ static o71_status_t free_object
 #if O71_CHECKED
     if (os)
     {
-        M("free_object_index(obref_%lX) failed: %s", 
+        M("free_object_index(obref_%lX) failed: %s",
           (long) O71_MOX_TO_REF(obj_x), N(os));
         return os;
     }
@@ -2236,7 +2408,7 @@ o71_status_t noop_object_finish
     o71_ref_t obj_r
 )
 {
-    M("finished obref_%lX", (long) obj_r);
+    M2("finished obref_%lX", (long) obj_r);
     return O71_OK;
 }
 
@@ -2371,13 +2543,13 @@ static o71_status_t sfunc_call
     os = alloc_object(world_p, func_r, &ec_ox);
     if (os)
     {
-        M("failed to create exe_ctx for sfunc=obref_%lX: %s", 
+        M("failed to create exe_ctx for sfunc=obref_%lX: %s",
           (long) func_r, N(os));
         return os;
     }
     sec_p = world_p->obj_pa[ec_ox];
     sec_p->exe_ctx.caller_r = flow_p->exe_ctx_r;
-    sec_p->calling = 0;
+    sec_p->ret_value_vx = -1;
     sec_p->insn_x = 0;
     for (i = 0; i < sfunc_p->var_n; ++i)
         sec_p->var_ra[i] = O71R_NULL;
@@ -2438,17 +2610,25 @@ static o71_status_t sfunc_run
     o71_status_t os;
     o71_ref_t laa[0x40];
     o71_ref_t * aa;
+    uint32_t ret_value_vx;
 
     A(flow_p->exe_ctx_r != O71R_NULL);
     sec_p = o71_obj_ptr(world_p, flow_p->exe_ctx_r);
     sfunc_p = o71_obj_ptr(world_p, sec_p->exe_ctx.hdr.class_r);
     ix = (unsigned int) sec_p->insn_x;
     if (flow_p->exc_r != O71R_NULL) goto l_exc;
-    if (sec_p->calling)
+    switch (sec_p->mode)
     {
-        sec_p->calling = 0;
-        ox = sfunc_p->insn_a[ix].opnd_x;
-        goto l_call_returned;
+    case O71_SECM_STORE_RET_VAL:
+        ret_value_vx = sec_p->ret_value_vx;
+        sec_p->mode = O71_SECM_RUN;
+        goto l_store_ret_val;
+    case O71_SECM_IGNORE_RET_VAL:
+        sec_p->mode = O71_SECM_RUN;
+        os = o71_deref(world_p, flow_p->value_r);
+        AOS(os);
+        ++ix;
+        break;
     }
 
     for (;;)
@@ -2577,10 +2757,12 @@ static o71_status_t sfunc_run
                 switch (os)
                 {
                 case O71_OK:
-                    break; // fall into l_call_returned
+                    ret_value_vx = sfunc_p->opnd_a[ox];
+                    break; // fall into l_store_ret_val
                 case O71_PENDING:
-                    sec_p->calling = 1;
-                    break;
+                    sec_p->ret_value_vx = sfunc_p->opnd_a[ox];
+                    sec_p->mode = O71_SECM_STORE_RET_VAL;
+                    return O71_PENDING;
                 case O71_EXC:
                     // exception thrown; try to handle it
                     goto l_exc;
@@ -2590,16 +2772,83 @@ static o71_status_t sfunc_run
                 }
             }
 
-        l_call_returned:
+        l_store_ret_val:
             {
-                uint32_t dvx;
-                dvx = sfunc_p->opnd_a[ox];
-                M("call to func=obref_%lX returned obref_%lX, storing into v%X",
-                  (long) sec_p->var_ra[sfunc_p->opnd_a[ox + 1]],
-                  (long) flow_p->value_r, dvx);
-                os = o71_deref(world_p, sec_p->var_ra[dvx]);
+                M("storing return value obref_%lX into v%X",
+                  (long) flow_p->value_r, ret_value_vx);
+                os = o71_deref(world_p, sec_p->var_ra[ret_value_vx]);
                 AOS(os);
-                sec_p->var_ra[dvx] = flow_p->value_r;
+                sec_p->var_ra[ret_value_vx] = flow_p->value_r;
+                break;
+            }
+
+        case O71O_GET_FIELD:
+            {
+                uint32_t vvx, ovx, fvx;
+                o71_class_t * class_p;
+                o71_ref_t obj_r, value_r;
+                vvx = sfunc_p->opnd_a[ox + 0];
+                ovx = sfunc_p->opnd_a[ox + 1];
+                fvx = sfunc_p->opnd_a[ox + 2];
+                M("EXEC %04X: get_field "
+                  "val:v%X=obref_%lX, obj:v%X=obref_%lX, field:v%X=obref_%lX",
+                  ix, vvx, sec_p->var_ra[vvx], ovx, sec_p->var_ra[ovx],
+                  fvx, sec_p->var_ra[fvx]);
+                obj_r = sec_p->var_ra[ovx];
+                class_p = o71_class(world_p, obj_r);
+                os = class_p->get_field(flow_p, obj_r,
+                                        sec_p->var_ra[fvx], &value_r);
+                switch (os)
+                {
+                case O71_OK:
+                    os = o71_deref(world_p, sec_p->var_ra[vvx]);
+                    AOS(os);
+                    sec_p->var_ra[vvx] = value_r;
+                    M("store obref_%lX into v%X", value_r, vvx);
+                    break;
+                case O71_PENDING:
+                    sec_p->mode = O71_SECM_STORE_RET_VAL;
+                    sec_p->ret_value_vx = vvx;
+                    return O71_PENDING;
+                case O71_EXC:
+                    goto l_exc;
+                default:
+                    M("unhandled set_field status: %s", N(os));
+                    return O71_BUG;
+                }
+                break;
+            }
+
+
+        case O71O_SET_FIELD:
+            {
+                uint32_t vvx, ovx, fvx;
+                o71_class_t * class_p;
+                o71_ref_t obj_r;
+                vvx = sfunc_p->opnd_a[ox + 0];
+                ovx = sfunc_p->opnd_a[ox + 1];
+                fvx = sfunc_p->opnd_a[ox + 2];
+                M("EXEC %04X: set_field "
+                  "val:v%X=obref_%lX, obj:v%X=obref_%lX, field:v%X=obref_%lX",
+                  ix, vvx, sec_p->var_ra[vvx], ovx, sec_p->var_ra[ovx],
+                  fvx, sec_p->var_ra[fvx]);
+                obj_r = sec_p->var_ra[ovx];
+                class_p = o71_class(world_p, obj_r);
+                os = class_p->set_field(flow_p, obj_r,
+                                        sec_p->var_ra[fvx], sec_p->var_ra[vvx]);
+                switch (os)
+                {
+                case O71_OK:
+                    break;
+                case O71_PENDING:
+                    sec_p->mode = O71_SECM_IGNORE_RET_VAL;
+                    return O71_PENDING;
+                case O71_EXC:
+                    goto l_exc;
+                default:
+                    M("unhandled set_field status: %s", N(os));
+                    return O71_BUG;
+                }
                 break;
             }
 
@@ -2787,8 +3036,8 @@ static o71_status_t str_finish
     o71_status_t os;
     A(o71_model(world_p, obj_r) & O71M_STRING);
     str_p = o71_obj_ptr(world_p, obj_r);
-    M("remove string '%.*s' (mode=%u, m=%zu)",
-      (int) str_p->n, str_p->a, str_p->mode, str_p->m);
+    M2("remove string '%.*s' (mode=%u, m=%zu)",
+       (int) str_p->n, str_p->a, str_p->mode, str_p->m);
 #if O71_DEBUG >= 2
     kvbag_dump(world_p, &world_p->istr_bag);
 #endif
@@ -2886,6 +3135,8 @@ static o71_status_t kvbag_search
     o71_kvbag_loc_t * loc_p
 )
 {
+    M2("bag=%p, mode=%s, key=obref_%lX", kvbag_p,
+       kvbag_p->mode ? "rbtree" : "array", key_r);
     if (kvbag_p->mode == O71_BAG_ARRAY)
         return kvbag_array_search(world_p, kvbag_p, key_r, cmp, ctx, loc_p);
     A(kvbag_p->mode == O71_BAG_RBTREE);
@@ -2903,7 +3154,7 @@ static o71_ref_t kvbag_get_loc_value
 #if O71_CHECKED
     if (loc_p->status != O71_OK)
     {
-        M("*** BUG *** trying to get value after key match failed (%s)!!!!", 
+        M("*** BUG *** trying to get value after key match failed (%s)!!!!",
           N(loc_p->status));
         return O71_MOX_TO_REF(-1);
     }
@@ -3124,17 +3375,17 @@ static o71_status_t kvbag_rbtree_add
 {
     o71_kvbag_loc_t loc;
     o71_status_t os;
-    M("kvbag_p=%p, key=obref_%lX, value=obref_%lX", kvbag_p, key_r, value_r);
+    M2("kvbag_p=%p, key=obref_%lX, value=obref_%lX", kvbag_p, key_r, value_r);
     os = kvbag_rbtree_search(world_p, kvbag_p, key_r,
                              str_intern_cmp, NULL, &loc);
     if (os == O71_OK)
     {
         o71_kvnode_t * n = loc.rbtree.node_a[loc.rbtree.last_x];
-        M("discarding old_value=obref_%lX for key=obref_%lX", value_r, key_r);
+        M2("discarding old_value=obref_%lX for key=obref_%lX", value_r, key_r);
         os = o71_deref(world_p, n->kv.value_r);
         AOS(os);
         n->kv.value_r = value_r;
-        M("updated value to obref_%lX for key obref_%lX", value_r, key_r);
+        M2("updated value to obref_%lX for key obref_%lX", value_r, key_r);
         return O71_OK;
     }
     if (os != O71_MISSING)
@@ -3187,7 +3438,7 @@ static o71_status_t kvbag_rbtree_insert
     o71_kvnode_t * node;
     o71_status_t os;
 
-    M("rbtree insert (k=obref_%lX, v=obref_%lX)", key_r, value_r);
+    M2("rbtree insert (k=obref_%lX, v=obref_%lX)", key_r, value_r);
     os = kvbag_rbtree_node_alloc(world_p, &node);
     if (os)
     {
@@ -3203,7 +3454,7 @@ static o71_status_t kvbag_rbtree_insert
     node->clr[0] = 1;
     node->clr[1] = 0;
     ts = loc_p->rbtree.side_a[i];
-    M("ts=%u", ts);
+    M2("ts=%u", ts);
     A(ts < 2);
     SET_CHILD(loc_p->rbtree.node_a[i], ts, node);
 
@@ -3301,7 +3552,7 @@ static o71_status_t kvbag_array_search
         case O71_LESS: b = c - 1; break;
         case O71_MORE: a = c + 1; break;
         case O71_EQUAL:
-            loc_p->array.index = a;
+            loc_p->array.index = c;
 #if O71_CHECKED
             loc_p->status = O71_OK;
 #endif
@@ -3318,7 +3569,7 @@ static o71_status_t kvbag_array_search
 #if O71_CHECKED
             loc_p->status = O71_MISSING;
 #endif
-    M("miss: key_r=obref_%lX -> pos=%u", key_r, a);
+    M2("miss: key_r=obref_%lX -> pos=%u", key_r, a);
     return O71_MISSING;
 }
 
@@ -3795,6 +4046,15 @@ static o71_status_t get_dyn_obj_field
     o71_ref_t * value_rp
 )
 {
+    o71_status_t os;
+    A(o71_model(flow_p->world_p, obj_r) != O71M_INVALID);
+    A(o71_model(flow_p->world_p, field_r) != O71M_INVALID);
+    os = o71_istr_check(flow_p->world_p, field_r);
+    if (os)
+    {
+        M("bad field name obref_%lX: %s", (long) field_r, N(os));
+        return os;
+    }
     return o71_dyn_obj_get(flow_p->world_p, obj_r, field_r, value_rp);
 }
 
@@ -3805,10 +4065,20 @@ static o71_status_t set_dyn_obj_field
     o71_flow_t * flow_p,
     o71_ref_t obj_r,
     o71_ref_t field_r,
-    o71_ref_t value
+    o71_ref_t value_r
 )
 {
-    return o71_dyn_obj_set(flow_p->world_p, obj_r, field_r, value);
+    o71_status_t os;
+    A(o71_model(flow_p->world_p, obj_r) != O71M_INVALID);
+    A(o71_model(flow_p->world_p, field_r) != O71M_INVALID);
+    A(o71_model(flow_p->world_p, value_r) != O71M_INVALID);
+    os = o71_istr_check(flow_p->world_p, field_r);
+    if (os)
+    {
+        M("bad field name obref_%lX: %s", (long) field_r, N(os));
+        return os;
+    }
+    return o71_dyn_obj_set(flow_p->world_p, obj_r, field_r, value_r);
 }
 
 /* O71_MAIN *****************************************************************/
@@ -3876,8 +4146,10 @@ static void help ()
 static int dyn_obj_field_test (o71_world_t * world_p)
 {
     o71_ref_t aa_isr, bb_isr, cc_isr;
-    o71_ref_t sf_r;
+    o71_ref_t sf_r, obj_r;
+    o71_ref_t ra[4];
     o71_script_function_t * sf_p;
+    uint32_t * arg_vxa;
     o71_status_t os;
     int rc = 0;
     do
@@ -3896,7 +4168,30 @@ static int dyn_obj_field_test (o71_world_t * world_p)
         TS(o71_sfunc_append_init(world_p, sf_p, 2, cc_isr));
         TS(o71_sfunc_append_init(world_p, sf_p, 1, O71_SINT_TO_REF(3)));
         TS(o71_sfunc_append_set_field(world_p, sf_p, 1, 0, 2));
-        TS(o71_sfunc_append_ret(world_p, sf_p, 0));
+        TS(o71_sfunc_append_init(world_p, sf_p, 2, aa_isr));
+        TS(o71_sfunc_append_get_field(world_p, sf_p, 3, 0, 2));
+        TS(o71_sfunc_append_init(world_p, sf_p, 2, bb_isr));
+        TS(o71_sfunc_append_get_field(world_p, sf_p, 4, 0, 2));
+        TS(o71_sfunc_append_init(world_p, sf_p, 2, cc_isr));
+        TS(o71_sfunc_append_get_field(world_p, sf_p, 5, 0, 2));
+        TS(o71_sfunc_append_init(world_p, sf_p, 6, O71R_INT_ADD_FUNC));
+        TS(o71_sfunc_append_call(world_p, sf_p, 1, 6, 2, &arg_vxa));
+        arg_vxa[0] = 3;
+        arg_vxa[1] = 4;
+        TS(o71_sfunc_append_call(world_p, sf_p, 1, 6, 2, &arg_vxa));
+        arg_vxa[0] = 1;
+        arg_vxa[1] = 5;
+        TS(o71_sfunc_append_ret(world_p, sf_p, 1));
+
+        TS(o71_dyn_obj_create(world_p, O71R_DYN_OBJ_CLASS, &ra[0]));
+        M("dyn obj to test: obref_%lX", (long) ra[0]);
+        os = o71_prep_call(&world_p->root_flow, sf_r, ra, 1);
+        if (os != O71_PENDING) TE("prep_call failed: %s", N(os));
+        TS(o71_run(&world_p->root_flow, 0, O71_STEPS_MAX));
+        if (world_p->root_flow.value_r != O71_SINT_TO_REF(1 + 2 + 3))
+            TE("got obref_%lX, expecting obref_%lX",
+               (long) world_p->root_flow.value_r,
+               (long) O71_SINT_TO_REF(1 + 2 + 3));
     }
     while (0);
     printf("dyn_obj_field_test: %u\n", rc);
