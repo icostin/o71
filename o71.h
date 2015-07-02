@@ -59,7 +59,7 @@
 #define O71R_CLASS_CLASS (O71_MOX_TO_REF(O71X_CLASS_CLASS))
 #define O71R_STRING_CLASS (O71_MOX_TO_REF(O71X_STRING_CLASS))
 #define O71R_SMALL_INT_CLASS (O71_MOX_TO_REF(O71X_SMALL_INT_CLASS))
-#define O71R_DYN_OBJ_CLASS (O71_MOX_TO_REF(O71X_DYN_OBJ_CLASS))
+#define O71R_REG_OBJ_CLASS (O71_MOX_TO_REF(O71X_REG_OBJ_CLASS))
 #define O71R_FUNCTION_CLASS \
     (O71_MOX_TO_REF(O71X_FUNCTION_CLASS))
 #define O71R_SCRIPT_FUNCTION_CLASS \
@@ -121,7 +121,7 @@ enum o71_builtin_obj_index_e
     O71X_CLASS_CLASS,
     O71X_STRING_CLASS,
     O71X_SMALL_INT_CLASS,
-    O71X_DYN_OBJ_CLASS,
+    O71X_REG_OBJ_CLASS,
     O71X_FUNCTION_CLASS,
     O71X_SCRIPT_FUNCTION_CLASS,
     O71X_EXCEPTION_CLASS,
@@ -178,7 +178,7 @@ enum o71_sec_mode_e
 typedef enum o71_status_e o71_status_t;
 typedef intptr_t o71_ref_count_t;
 typedef struct o71_class_s o71_class_t;
-typedef struct o71_dyn_obj_s o71_dyn_obj_t;
+typedef struct o71_reg_obj_s o71_reg_obj_t;
 typedef struct o71_exc_handler_s o71_exc_handler_t;
 typedef struct o71_exception_s o71_exception_t;
 typedef struct o71_exe_ctx_s o71_exe_ctx_t;
@@ -401,7 +401,7 @@ struct o71_kvbag_loc_s
 #endif
 };
 
-struct o71_dyn_obj_s
+struct o71_reg_obj_s
 {
     o71_mem_obj_t hdr;
     o71_kvbag_t dyn_field_bag;
@@ -537,7 +537,7 @@ struct o71_world_s
     o71_class_t class_class;
     o71_class_t string_class;
     o71_class_t small_int_class;
-    o71_class_t dyn_obj_class;
+    o71_class_t reg_obj_class;
     o71_class_t function_class;
     o71_class_t script_function_class;
     o71_class_t exception_class;
@@ -1059,26 +1059,26 @@ O71_API ptrdiff_t o71_superclass_search
     o71_ref_t superclass_r
 );
 
-/* o71_dyn_obj_create *******************************************************/
+/* o71_reg_obj_create *******************************************************/
 /**
  *  Creates a dynamic object.
  *  @param world_p [in]
  *      the scripting world
  *  @param class_r [in]
- *      class derived from dyn_obj
- *  @param dyn_obj_rp [out]
+ *      class derived from reg_obj
+ *  @param reg_obj_rp [out]
  *      object created
  *  @retval O71_OK
  */
-O71_API o71_status_t o71_dyn_obj_create
+O71_API o71_status_t o71_reg_obj_create
 (
     o71_world_t * world_p,
     o71_ref_t class_r,
-    o71_ref_t * dyn_obj_rp
+    o71_ref_t * reg_obj_rp
 );
 
-/* o71_dyn_obj_get **********************************************************/
-O71_API o71_status_t o71_dyn_obj_get
+/* o71_reg_obj_get_field **********************************************************/
+O71_API o71_status_t o71_reg_obj_get_field
 (
     o71_world_t * world_p,
     o71_ref_t obj_r,
@@ -1086,7 +1086,7 @@ O71_API o71_status_t o71_dyn_obj_get
     o71_ref_t * value_rp
 );
 
-/* o71_dyn_obj_set **********************************************************/
+/* o71_reg_obj_set_field ****************************************************/
 /**
  *  Sets a field in the given dynamic object.
  *  @param world_p [in]
@@ -1099,7 +1099,7 @@ O71_API o71_status_t o71_dyn_obj_get
  *      @a field_istr_r must be an intern string otherwise an assertion will 
  *      occur in checked/debug builds and undefined behaviour in release
  */
-O71_API o71_status_t o71_dyn_obj_set
+O71_API o71_status_t o71_reg_obj_set_field
 (
     o71_world_t * world_p,
     o71_ref_t obj_r,
@@ -1127,5 +1127,19 @@ O71_API o71_status_t o71_istr_check
     o71_ref_t obj_r
 );
 
+/* o71_reg_class_create *****************************************************/
+/**
+ *  Creates a subclass of reg_obj class.
+ *  @param fix_field_istr_ra [in]
+ *      field intern strings with refs already incremented (this function
+ *      "borrows" the intern strings)
+ */
+O71_API o71_status_t o71_reg_class_create
+(
+    o71_world_t * world_p,
+    o71_ref_t * fix_field_istr_ra,
+    size_t fix_field_n,
+    o71_ref_t * class_rp
+);
 
 #endif /* _O71_H */
