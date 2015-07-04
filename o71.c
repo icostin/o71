@@ -724,6 +724,7 @@ O71_API char const * o71_status_name
         X(O71_BAD_STRING_REF);
         X(O71_BAD_RO_STRING_REF);
         X(O71_BAD_INTERN_STRING_REF);
+        X(O71_COMPILE_ERROR);
 
         X(O71_MEM_CORRUPTED);
         X(O71_REF_COUNT_OVERFLOW);
@@ -2224,6 +2225,114 @@ O71_API o71_status_t o71_reg_class_create
     refkv_qsort(class_p->fix_field_ofs_a, class_p->fix_field_n);
     return O71_OK;
 }
+
+/* o71_compile **************************************************************/
+O71_API o71_status_t o71_compile
+(
+    o71_code_t * code_p,
+    char const * src_name,
+    uint8_t const * src_a,
+    size_t src_n
+)
+{
+    size_t ofs;
+    uint32_t row, col, ch;
+    int chlen, ce;
+    code_p->src_name = src_name;
+    code_p->src_a = src_a;
+    code_p->src_n = src_n;
+    code_p->token_a = NULL;
+    code_p->token_n = 0;
+    code_p->token_m = 0;
+#define CE(_e) { ce = _e; break; }
+    ce = O71_COMPILE_OK;
+    for (ofs = 0, row = 1, col = 1; ofs < src_n; ofs += chlen)
+    {
+        if (src_a[ofs] < 0x20)
+        {
+            if (src_a[ofs] == '\r')
+            {
+                row += 1;
+                col = 1;
+                if (ofs + 1 < src_n && src_a[ofs + 1] == '\n')
+                {
+                    chlen += 2;
+                    continue;
+                }
+                chlen = 1;
+                continue;
+            }
+            if (src_a[ofs] == '\n')
+            {
+                row += 1;
+                col = 1;
+                chlen = 1;
+                continue;
+            }
+            CE(O71_CE_PARSE_BAD_CONTROL_CHAR);
+        }
+        if (src_a[ofs] < 0x80)
+        {
+            chlen = 1;
+            continue; 
+        }
+        if (src_a[ofs] < 0xC0) CE(O71_CE_PARSE_BAD_UTF8_START_BYTE);
+        if (src_a[ofs] < 0xE0)
+        {
+            if (ofs + 2 > src_n)
+                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
+            if ((src_a[ofs + 1] & 0xC0) != 0x80)
+                CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
+            if (src_a[ofs] < 0xC2)
+                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
+            chlen = 2;
+            col += 1;
+        }
+        if (src_a[ofs] < 0xF0)
+        {
+            if (ofs + 3 > src_n)
+                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
+            if (((src_a[ofs + 1] | src_a[ofs + 2]) & 0xC0) != 0x80)
+                CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
+            if (src_a[ofs] == 0xE0 && src_a[ofs + 1] < 0xA0)
+                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
+            if (src_a[ofs] == 0xED && src_a[ofs + 1] >= 0xA0)
+                CE(O71_CE_PARSE_SURROGATE_CODEPOINT);
+            chlen = 3;
+            col += 1;
+        }
+        if (src_a[ofs] < 0xF8)
+        {
+            if (ofs + 4 > src_n)
+                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
+            if (((src_a[ofs + 1] | src_a[ofs + 2] | src_a[ofs + 3]) & 0xC0)
+                != 0x80) CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
+            if (src_a[ofs] == 0xF0 && src_a[ofs + 1] < 0x90)
+                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
+        }
+        CE(O71_CE_PARSE_BAD_UTF8_START_BYTE);
+    }
+    if (ce)
+    {
+        code_p->ce_code = ce;
+        code_p->ce_row = row;
+        code_p->ce_col = col;
+        code_p->ce_ofs = ofs;
+        return O71_COMPILE_ERROR;
+    }
+
+    return O71_TODO;
+}
+
+/* o71_code_free ************************************************************/
+O71_API o71_status_t o71_code_free
+(
+    o71_code_t * code_p
+)
+{
+    return O71_OK;
+}
+
 
 /* log2_rounded_up **********************************************************/
 static uint8_t log2_rounded_up
@@ -4574,11 +4683,96 @@ static int test ()
     return rc;
 }
 
+/* compile_error_msg ********************************************************/
+static int compile_error_msg (o71_code_t const * code_p, char * buf, size_t len)
+{
+    switch (code_p->ce_code)
+    {
+    case O71_CE_PARSE_BAD_CONTROL_CHAR:
+        snprintf(buf, len, "%s:%u:%u: error: bad control char 0x%02X", 
+                 code_p->src_name, code_p->ce_row, code_p->ce_col, 
+                 code_p->src_a[code_p->ce_ofs]);
+        break;
+    case O71_CE_PARSE_BAD_UTF8_START_BYTE:
+        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 start byte 0x%02X", 
+                 code_p->src_name, code_p->ce_row, code_p->ce_col, 
+                 code_p->src_a[code_p->ce_ofs]);
+        break;
+    case O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR:
+        snprintf(buf, len, "%s:%u:%u: error: overly long encoded UTF8 char", 
+                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        break;
+    case O71_CE_PARSE_TRUNCATED_UTF8_CHAR:
+        snprintf(buf, len, "%s:%u:%u: error: truncated UTF8 char", 
+                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        break;
+    case O71_CE_PARSE_BAD_UTF8_CONTINUATION:
+        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 continuation byte", 
+                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        break;
+    case O71_CE_PARSE_SURROGATE_CODEPOINT:
+        snprintf(buf, len, "%s:%u:%u: error: surrogate Unicode codepoint",
+                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        break;
+    default:
+        snprintf(buf, len, "compile error code: %u", code_p->ce_code);
+    }
+    return 0;
+}
+
 /* run_script ***************************************************************/
 static int run_script (int ac, char const * const * av)
 {
-    fprintf(stderr, "error: running scripts is not implemented!\n");
-    return ERR_BUG;
+    FILE * f = NULL;
+    char const * src_name;
+    long src_size;
+    o71_code_t code;
+    uint8_t * src_a = NULL;
+    o71_status_t os;
+    int rv = ERR_RUN;
+    char msg[0x800];
+
+#define E(...) { fprintf(stderr, "error: " __VA_ARGS__); fprintf(stderr, "\n");  break; }
+    do
+    {
+        src_name = av[0];
+        f = fopen(src_name, "rb");
+        if (!f) E("could not open script file '%s'", src_name);
+        if (fseek(f, 0, SEEK_END) 
+            || (src_size = ftell(f)) < 0 
+            || fseek(f, 0, SEEK_SET))
+            E("seek failed in script file '%s'", src_name);
+        src_a = malloc(src_size);
+        if (!src_a)
+            E("failed to allocate %lu bytes for reading script file '%s'",
+              src_size, src_name);
+        if (fread(src_a, 1, src_size, f) != (size_t) src_size)
+            E("failed to read %lu bytes from script file '%s'", 
+              src_size, src_name);
+        fclose(f);
+        f = NULL;
+        os = o71_compile(&code, src_name, src_a, src_size);
+        if (os)
+        {
+            if (os == O71_COMPILE_ERROR)
+            {
+                compile_error_msg(&code, msg, sizeof(msg));
+                msg[sizeof(msg) - 1] = 0;
+                fputs(msg, stderr);
+                break;
+            }
+            else E("failed compiling script file '%s' (%s)", 
+                   src_name, o71_status_name(os));
+        }
+        fprintf(stderr, "error: running scripts is not implemented!\n");
+        rv = ERR_BUG;
+    }
+    while (0);
+#undef E
+    if (f) fclose(f);
+    if (code.src_a) o71_code_free(&code);
+    if (src_a) free(src_a);
+    return rv;
 }
 
 #define RUN_SCRIPT 0
@@ -4645,6 +4839,7 @@ int main (int argc, char const * const * argv)
             }
         }
         a[n++] = argv[i];
+        opt_parse = 0;
     }
 
     switch (run)

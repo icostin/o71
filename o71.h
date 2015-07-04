@@ -106,6 +106,8 @@ enum o71_status_e
     O71_BAD_RO_STRING_REF,
     O71_BAD_INTERN_STRING_REF,
 
+    O71_COMPILE_ERROR,
+
     O71_FATAL,
     O71_MEM_CORRUPTED = O71_FATAL,
     O71_REF_COUNT_OVERFLOW,
@@ -178,6 +180,7 @@ enum o71_sec_mode_e
 typedef enum o71_status_e o71_status_t;
 typedef intptr_t o71_ref_count_t;
 typedef struct o71_class_s o71_class_t;
+typedef struct o71_code_s o71_code_t;
 typedef struct o71_reg_obj_s o71_reg_obj_t;
 typedef struct o71_exc_handler_s o71_exc_handler_t;
 typedef struct o71_exception_s o71_exception_t;
@@ -195,6 +198,7 @@ typedef struct o71_mem_obj_s o71_mem_obj_t;
 typedef struct o71_script_exe_ctx_s o71_script_exe_ctx_t;
 typedef struct o71_script_function_s o71_script_function_t;
 typedef struct o71_string_s o71_string_t;
+typedef struct o71_token_s o71_token_t;
 typedef struct o71_world_s o71_world_t;
 typedef uintptr_t o71_obj_index_t;
 
@@ -547,6 +551,99 @@ struct o71_world_s
 
     unsigned int flow_id_seed;
     uint8_t cleaning;
+};
+
+enum o71_token_type_e
+{
+    O71_TT_TILDE,
+    O71_TT_EXCLAMATION,
+    O71_TT_QUESTION,
+    O71_TT_PERCENT,
+    O71_TT_CARET,
+    O71_TT_AMPERSAND,
+    O71_TT_PIPE,
+    O71_TT_STAR,
+    O71_TT_SLASH,
+    O71_TT_PAREN_OPEN,
+    O71_TT_PAREN_CLOSE,
+    O71_TT_SQUARE_BRACKET_OPEN,
+    O71_TT_SQUARE_BRACKET_CLOSE,
+    O71_TT_CURLY_BRACKET_OPEN,
+    O71_TT_CURLY_BRACKET_CLOSE,
+    O71_TT_EQUAL,
+    O71_TT_PLUS,
+    O71_TT_MINUS,
+    O71_TT_LESS,
+    O71_TT_GREATER,
+    O71_TT_DOT,
+    O71_TT_COMMA,
+    O71_TT_SEMICOLON,
+    O71_TT_COLON,
+
+    O71_TT_PLUS_PLUS,
+    O71_TT_MINUS_MINUS,
+    O71_TT_LESS_LESS,
+    O71_TT_GREATER_GREATER,
+    O71_TT_EQUAL_EQUAL,
+    O71_TT_PLUS_EQUAL,
+    O71_TT_MINUS_EQUAL,
+    O71_TT_STAR_EQUAL,
+    O71_TT_SLASH_EQUAL,
+    O71_TT_PERCENT_EQUAL,
+    O71_TT_LESS_EQUAL,
+    O71_TT_GREATER_EQUAL,
+    O71_TT_LESS_LESS_EQUAL,
+    O71_TT_GREATER_GREATER_EQUAL,
+    O71_TT_AMPERSAND_EQUAL,
+    O71_TT_PIPE_EQUAL,
+    O71_TT_CARET_EQUAL,
+
+    O71_TT_INT,
+    O71_TT_STR,
+};
+
+enum o71_compile_error_e
+{
+    O71_COMPILE_OK = 0,
+    /* parsing stage errors */
+    O71_CE_PARSE_BAD_CONTROL_CHAR,
+    O71_CE_PARSE_BAD_UTF8_START_BYTE,
+    O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR,
+    O71_CE_PARSE_TRUNCATED_UTF8_CHAR,
+    O71_CE_PARSE_BAD_UTF8_CONTINUATION,
+    O71_CE_PARSE_SURROGATE_CODEPOINT,
+};
+
+struct o71_token_s
+{
+    uint32_t src_ofs;
+    uint32_t src_len;
+    uint32_t src_row;
+    uint32_t src_col;
+    uint8_t type;
+    union
+    {
+        struct
+        {
+            uint8_t const * a;
+            size_t n;
+        } str;
+        uint64_t num;
+    };
+
+};
+
+struct o71_code_s
+{
+    char const * src_name;
+    uint8_t const * src_a;
+    o71_token_t * token_a;
+    size_t src_n;
+    size_t token_n;
+    size_t token_m;
+    unsigned int ce_code;
+    uint32_t ce_row, ce_col;
+    size_t ce_ofs;
 };
 
 /* o71_status_name **********************************************************/
@@ -1140,6 +1237,32 @@ O71_API o71_status_t o71_reg_class_create
     o71_ref_t * fix_field_istr_ra,
     size_t fix_field_n,
     o71_ref_t * class_rp
+);
+
+/* o71_compile **************************************************************/
+/**
+ *  Compiles the source given as UTF-8 text into code that can be used to
+ *  populate a function body and subsequently executed
+ */
+O71_API o71_status_t o71_compile
+(
+    o71_code_t * code_p,
+    char const * src_name,
+    uint8_t const * src_a,
+    size_t src_n
+);
+
+/* o71_code_free ************************************************************/
+/**
+ *  Frees all memory used by the code structure obtained from a previous
+ *  call to o71_compile.
+ *  @note this should be called even after unsuccessful calls to o71_compile()
+ *      as some resources (for instance: generated error message) are left
+ *      allocated
+ */
+O71_API o71_status_t o71_code_free
+(
+    o71_code_t * code_p
 );
 
 #endif /* _O71_H */
