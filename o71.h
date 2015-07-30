@@ -177,8 +177,7 @@ enum o71_sec_mode_e
 #define O71MI_FUNCTION          (O71M_FUNCTION | O71MI_CLASS)
 #define O71MI_SCRIPT_FUNCTION   (O71M_SCRIPT_FUNCTION | O71MI_FUNCTION)
 
-typedef enum o71_status_e o71_status_t;
-typedef intptr_t o71_ref_count_t;
+typedef struct o71_allocator_s o71_allocator_t;
 typedef struct o71_class_s o71_class_t;
 typedef struct o71_code_s o71_code_t;
 typedef struct o71_reg_obj_s o71_reg_obj_t;
@@ -195,12 +194,14 @@ typedef struct o71_kvbag_s o71_kvbag_t;
 typedef struct o71_kvnode_s o71_kvnode_t;
 typedef struct o71_kvbag_loc_s o71_kvbag_loc_t;
 typedef struct o71_mem_obj_s o71_mem_obj_t;
+typedef uintptr_t o71_obj_index_t;
+typedef intptr_t o71_ref_count_t;
 typedef struct o71_script_exe_ctx_s o71_script_exe_ctx_t;
 typedef struct o71_script_function_s o71_script_function_t;
+typedef enum o71_status_e o71_status_t;
 typedef struct o71_string_s o71_string_t;
 typedef struct o71_token_s o71_token_t;
 typedef struct o71_world_s o71_world_t;
-typedef uintptr_t o71_obj_index_t;
 
 /* o71_ref_t ****************************************************************/
 /**
@@ -504,6 +505,24 @@ struct o71_script_exe_ctx_s
     o71_ref_t var_ra[0];
 };
 
+struct o71_allocator_s
+{
+    /*  realloc  */
+    /**
+     *  @retval O71_OK realloc successful
+     *  @retval O71_NO_MEM
+     *  @retval O71_MEM_LIMIT
+     *  @retval O71_MEM_CORRUPTED
+     *  @retval O71_BUG
+     *  @retval O71_TODO
+     */
+    o71_realloc_f realloc;
+    void * context;
+    size_t mem_usage;
+    size_t mem_limit;
+    size_t mem_peak;
+};
+
 struct o71_world_s
 {
     union
@@ -515,24 +534,9 @@ struct o71_world_s
     size_t obj_n;
     o71_obj_index_t free_list_head_x;
     o71_obj_index_t destroy_list_head_x; // chained using ~obj_p->ref_n
+    o71_allocator_t * allocator_p;
 
     o71_kvbag_t istr_bag;
-    size_t mem_usage;
-    size_t mem_limit;
-    size_t mem_peak;
-
-    /*  realloc  */
-    /**
-     *  @retval O71_OK realloc successful
-     *  @retval O71_NO_MEM
-     *  @retval O71_MEM_LIMIT
-     *  @retval O71_MEM_CORRUPTED
-     *  @retval O71_BUG
-     *  @retval O71_TODO
-     */
-    o71_realloc_f realloc;
-    void * realloc_context;
-
     o71_flow_t root_flow;
 
     o71_mem_obj_t null_object;
@@ -555,6 +559,7 @@ struct o71_world_s
 
 enum o71_token_type_e
 {
+    O71_TT_END = 1,
     O71_TT_TILDE,
     O71_TT_EXCLAMATION,
     O71_TT_QUESTION,
@@ -582,9 +587,13 @@ enum o71_token_type_e
 
     O71_TT_PLUS_PLUS,
     O71_TT_MINUS_MINUS,
+    O71_TT_STAR_STAR,
     O71_TT_LESS_LESS,
     O71_TT_GREATER_GREATER,
+    O71_TT_AMPERSAND_AMPERSAND,
+    O71_TT_PIPE_PIPE,
     O71_TT_EQUAL_EQUAL,
+    O71_TT_EXCLAMATION_EQUAL,
     O71_TT_PLUS_EQUAL,
     O71_TT_MINUS_EQUAL,
     O71_TT_STAR_EQUAL,
@@ -597,9 +606,63 @@ enum o71_token_type_e
     O71_TT_AMPERSAND_EQUAL,
     O71_TT_PIPE_EQUAL,
     O71_TT_CARET_EQUAL,
+    O71_TT_STAR_STAR_EQUAL,
+    O71_TT_AMPERSAND_AMPERSAND_EQUAL,
+    O71_TT_PIPE_PIPE_EQUAL,
 
-    O71_TT_INT,
-    O71_TT_STR,
+    O71_TT_RETURN,
+    O71_TT_BREAK,
+    O71_TT_GOTO,
+    O71_TT_IF,
+    O71_TT_ELSE,
+    O71_TT_WHILE,
+    O71_TT_DO,
+    O71_TT_FOR,
+    O71_TT_SWITCH,
+    O71_TT_CASE,
+
+    O71_TT_INTEGER,
+    O71_TT_STRING,
+    O71_TT_IDENTIFIER,
+
+    O71_TT_SOURCE,
+    O71_TT_STMT_SEQ,
+    O71_TT_STMT,
+    O71_TT_BLOCK_STMT,
+
+    O71_TT_IF_STMT_START,
+    O71_TT_DO_STMT_START,
+    O71_TT_WHILE_COND,
+
+    O71_TT_UNARY_OPERATOR,
+    O71_TT_EXP_OPERATOR,
+    O71_TT_MUL_OPERATOR,
+    O71_TT_ADD_OPERATOR,
+    O71_TT_CMP_OPERATOR,
+    O71_TT_EQU_OPERATOR,
+    O71_TT_ASG_OPERATOR,
+
+    O71_TT_VAR_INIT,
+    O71_TT_VAR_INIT_LIST,
+    O71_TT_ARG_DECL,
+    O71_TT_ARG_DECL_LIST,
+    O71_TT_EXPR,
+    O71_TT_EXPR_LIST,
+    O71_TT_ATOM_EXPR,
+    O71_TT_POSTFIX_EXPR,
+    O71_TT_PREFIX_EXPR,
+    O71_TT_EXP_EXPR,
+    O71_TT_AND_EXPR,
+    O71_TT_OR_EXPR,
+    O71_TT_XOR_EXPR,
+    O71_TT_MUL_EXPR,
+    O71_TT_ADD_EXPR,
+    O71_TT_CMP_EXPR,
+    O71_TT_EQU_EXPR,
+    O71_TT_LOGIC_AND_EXPR,
+    O71_TT_LOGIC_XOR_EXPR,
+    O71_TT_LOGIC_OR_EXPR,
+    O71_TT_COND_EXPR,
 };
 
 enum o71_compile_error_e
@@ -612,6 +675,10 @@ enum o71_compile_error_e
     O71_CE_PARSE_TRUNCATED_UTF8_CHAR,
     O71_CE_PARSE_BAD_UTF8_CONTINUATION,
     O71_CE_PARSE_SURROGATE_CODEPOINT,
+    O71_CE_PARSE_BAD_NUMBER,
+    O71_CE_PARSE_UNFINISHED_STRING,
+    O71_CE_PARSE_BAD_STRING_ESCAPE,
+    O71_CE_PARSE_BAD_CHAR,
 };
 
 struct o71_token_s
@@ -625,7 +692,7 @@ struct o71_token_s
     {
         struct
         {
-            uint8_t const * a;
+            uint8_t * a;
             size_t n;
         } str;
         uint64_t num;
@@ -638,6 +705,7 @@ struct o71_code_s
     char const * src_name;
     uint8_t const * src_a;
     o71_token_t * token_a;
+    o71_allocator_t * allocator_p;
     size_t src_n;
     size_t token_n;
     size_t token_m;
@@ -652,6 +720,21 @@ O71_API char const * o71_status_name
     o71_status_t status
 );
 
+/* o71_allocator_init *******************************************************/
+/**
+ *  Init allocator.
+ *  @returns the input structure @a allocator_p
+ *  @note this function is compiled with __attribute__((chuck_norris))
+ *      so it cannot fail.
+ */
+O71_API o71_allocator_t * o71_allocator_init
+(
+    o71_allocator_t * allocator_p,
+    o71_realloc_f realloc,
+    void * context,
+    size_t mem_limit
+);
+
 /* o71_world_init ***********************************************************/
 /**
  *  @retval O71_OK
@@ -664,15 +747,7 @@ O71_API char const * o71_status_name
 O71_API o71_status_t o71_world_init
 (
     o71_world_t * world_p,
-    o71_status_t (* realloc)
-        (
-            void * * data_pp,
-            size_t old_size,
-            size_t new_size,
-            void * realloc_context
-        ),
-    void * realloc_context,
-    size_t mem_limit
+    o71_allocator_t * allocator_p
 );
 
 /* o71_world_finish *********************************************************/
@@ -1247,6 +1322,7 @@ O71_API o71_status_t o71_reg_class_create
 O71_API o71_status_t o71_compile
 (
     o71_code_t * code_p,
+    o71_allocator_t * allocator_p,
     char const * src_name,
     uint8_t const * src_a,
     size_t src_n

@@ -6,6 +6,8 @@
 
 #if O71_DEBUG
 #include <stdio.h>
+#include <inttypes.h>
+#include <stdint.h>
 #define M(...) do { printf("%s():%u: ", __FUNCTION__, __LINE__); \
     printf(__VA_ARGS__); printf("\n"); } while (0)
 #else
@@ -20,6 +22,20 @@
 
 #define FIELD_OFS(_type, _field) ((uintptr_t) &((_type *) NULL)->_field)
 #define ITEM_COUNT(_array) (sizeof(_array) / sizeof(_array[0]))
+#define IS_DIGIT(_ch) ((_ch) >= '0' && (_ch) <= '9')
+#define IS_HEX_DIGIT(_ch) \
+    (((_ch) >= '0' && (_ch) <= '9') || \
+     (((_ch) | 0x20) >= 'a' && ((_ch) | 0x20) <= 'f'))
+#define IS_ALPHA(_ch) (((_ch) >= 'a' && (_ch) <= 'z') || \
+                       ((_ch) >= 'A' && (_ch) <= 'Z'))
+#define IS_ID_START_CHAR(_ch) (IS_ALPHA((_ch)) || (_ch) == '_')
+#define IS_ID_BODY_CHAR(_ch) (IS_ID_START_CHAR((_ch)) || IS_DIGIT((_ch)))
+#define ALPHANUM_TO_DIGIT(_ch) ((_ch) <= '9' ? (_ch) - '0' : 9 + ((_ch) & 31))
+
+#define FREE_ARRAY(_allocator_p, _array, _length) \
+    os = redim((_allocator_p), (void * *) &(_array), &(_length), 0, \
+               sizeof((_array)[0])); AOS(os)
+
 
 #if O71_CHECKED
 #define A(_cond) \
@@ -58,6 +74,28 @@ static uint8_t log2_rounded_up
     uintptr_t n
 );
 
+/*  utf8_codepoint_length  */
+/**
+ *  Computes the length in bytes of the UTF8 encoding for the given *valid*
+ *  Unicode codepoint.
+ */
+static unsigned int utf8_codepoint_length
+(
+    uint32_t codepoint
+);
+
+/*  utf8_codepoint_encode  */
+/**
+ *  Encodes a single Unicode codepoint into UTF8.
+ *  @warning @a out must be large enough to hold the encoded char; one can use
+ *  utf8_codepoint_length() to determine the necessary size.
+ */
+static unsigned int utf8_codepoint_encode
+(
+    uint8_t * out,
+    uint32_t codepoint
+);
+
 /* redim */
 /**
  *  Redim, steadym, gom! Redim your soul!
@@ -72,7 +110,7 @@ static uint8_t log2_rounded_up
  */
 static o71_status_t redim
 (
-    o71_world_t * world_p,
+    o71_allocator_t * allocator_p,
     void * * data_pp,
     size_t * crt_count_p,
     size_t new_count,
@@ -85,7 +123,7 @@ static o71_status_t redim
  */
 static o71_status_t extend_array
 (
-    o71_world_t * world_p,
+    o71_allocator_t * allocator_p,
     void * * extra_ap,
     void * * data_ap,
     size_t * crt_alloc_count_p,
@@ -317,7 +355,10 @@ static o71_status_t sfunc_run
     o71_flow_t * flow_p
 );
 
-/* sfunc_alloc_code *********************************************************/
+/*  sfunc_alloc_code  */
+/**
+ *  Allocates code structures.
+ */
 static o71_status_t sfunc_alloc_code
 (
     o71_world_t * world_p,
@@ -328,7 +369,10 @@ static o71_status_t sfunc_alloc_code
     size_t opnd_n
 );
 
-/* sfunc_add_const **********************************************************/
+/*  sfunc_add_const  */
+/**
+ *  Adds a constant to the function.
+ */
 static o71_status_t sfunc_add_const
 (
     o71_world_t * world_p,
@@ -337,7 +381,7 @@ static o71_status_t sfunc_add_const
     o71_ref_t obj_r
 );
 
-/* sfunc_append_opc_val_obj_name ********************************************/
+/* sfunc_append_opc_val_obj_name */
 /**
  *  @retval O71_OK alles gut
  */
@@ -351,7 +395,11 @@ static o71_status_t sfunc_append_opc_val_obj_name
     uint32_t name_istr_vx
 );
 
-/* ref_cmp ************************************************************/
+/*  ref_cmp  */
+/**
+ *  Compares 2 references by their value as integers not by the content
+ *  referenced.
+ */
 static o71_status_t ref_cmp
 (
     o71_world_t * world_p,
@@ -360,14 +408,20 @@ static o71_status_t ref_cmp
     void * ctx
 );
 
-/* kvbag_init ***************************************************************/
+/*  kvbag_init  */
+/**
+ *  Inits a key value bag.
+ */
 static void kvbag_init
 (
     o71_kvbag_t * kvbag_p,
     uint8_t array_limit
 );
 
-/* kvbag_array_search *******************************************************/
+/*  kvbag_array_search  */
+/**
+ *
+ */
 static o71_status_t kvbag_array_search
 (
     o71_world_t * world_p,
@@ -378,7 +432,10 @@ static o71_status_t kvbag_array_search
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_array_delete *******************************************************/
+/*  kvbag_array_delete  */
+/**
+ *
+ */
 static o71_status_t kvbag_array_delete
 (
     o71_world_t * world_p,
@@ -386,7 +443,10 @@ static o71_status_t kvbag_array_delete
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_rbtree_search ******************************************************/
+/*  kvbag_rbtree_search  */
+/**
+ *
+ */
 static o71_status_t kvbag_rbtree_search
 (
     o71_world_t * world_p,
@@ -397,7 +457,10 @@ static o71_status_t kvbag_rbtree_search
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_rbtree_add *********************************************************/
+/*  kvbag_rbtree_add  */
+/**
+ *
+ */
 static o71_status_t kvbag_rbtree_add
 (
     o71_world_t * world_p,
@@ -406,7 +469,7 @@ static o71_status_t kvbag_rbtree_add
     o71_ref_t value_r
 );
 
-/* kvbag_rbtree_multi_add ***************************************************/
+/* kvbag_rbtree_multi_add */
 /**
  *  Adds multiple key-value items.
  *  @note this function is intended for switching a bag from the array form
@@ -420,7 +483,7 @@ static o71_status_t kvbag_rbtree_multi_add
     size_t kv_n
 );
 
-/* kvbag_rbtree_free ********************************************************/
+/* kvbag_rbtree_free */
 /**
  * Deletes all nodes in the tree.
  */
@@ -430,21 +493,30 @@ static o71_status_t kvbag_rbtree_free
     o71_kvnode_t * kvnode_p
 );
 
-/* kvbag_rbtree_node_alloc **************************************************/
+/*  kvbag_rbtree_node_alloc  */
+/**
+ *
+ */
 static o71_status_t kvbag_rbtree_node_alloc
 (
     o71_world_t * world_p,
     o71_kvnode_t * * kvnode_pp
 );
 
-/* kvbag_rbtree_node_free ***************************************************/
+/*  kvbag_rbtree_node_free  */
+/**
+ *
+ */
 static o71_status_t kvbag_rbtree_node_free
 (
     o71_world_t * world_p,
     o71_kvnode_t * kvnode_p
 );
 
-/* kvbag_search *************************************************************/
+/*  kvbag_search  */
+/**
+ *
+ */
 static o71_status_t kvbag_search
 (
     o71_world_t * world_p,
@@ -455,7 +527,10 @@ static o71_status_t kvbag_search
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_rbtree_insert ******************************************************/
+/*  kvbag_rbtree_insert  */
+/**
+ *
+ */
 static o71_status_t kvbag_rbtree_insert
 (
     o71_world_t * world_p,
@@ -465,7 +540,10 @@ static o71_status_t kvbag_rbtree_insert
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_rbtree_delete ******************************************************/
+/*  kvbag_rbtree_delete  */
+/**
+ *
+ */
 static o71_status_t kvbag_rbtree_delete
 (
     o71_world_t * world_p,
@@ -473,14 +551,17 @@ static o71_status_t kvbag_rbtree_delete
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_rbtree_np **********************************************************/
+/*  kvbag_rbtree_np  */
+/**
+ *
+ */
 static o71_kvnode_t * kvbag_rbtree_np
 (
     o71_kvbag_loc_t * loc_p,
     unsigned int side
 );
 
-/* kvbag_insert *************************************************************/
+/* kvbag_insert */
 /**
  *  Inserts a new key-value at the given location.
  *  @param key_r [in]
@@ -499,7 +580,7 @@ static o71_status_t kvbag_insert
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_delete *************************************************************/
+/* kvbag_delete */
 /**
  *  Deletes the item located.
  *  Ref counts are not affected - this just deletes the item from the bag.
@@ -513,7 +594,10 @@ static o71_status_t kvbag_delete
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_get_loc_value ******************************************************/
+/*  kvbag_get_loc_value  */
+/**
+ *
+ */
 static o71_ref_t kvbag_get_loc_value
 (
     o71_world_t * world_p,
@@ -521,7 +605,10 @@ static o71_ref_t kvbag_get_loc_value
     o71_kvbag_loc_t * loc_p
 );
 
-/* kvbag_set_loc_value ******************************************************/
+/*  kvbag_set_loc_value  */
+/**
+ *
+ */
 static void kvbag_set_loc_value
 (
     o71_world_t * world_p,
@@ -530,7 +617,7 @@ static void kvbag_set_loc_value
     o71_ref_t value_r
 );
 
-/* kvbag_put ****************************************************************/
+/* kvbag_put */
 /**
  *  Adds/replaces a value in the bag for the given key.
  *  @param key_r [in]
@@ -653,19 +740,69 @@ O71_INLINE o71_status_t set_var
     o71_ref_t src_r
 );
 
+/* alloc_token */
+/**
+ *  Allocates room for 1 token in the given code structure.
+ */
+static o71_status_t alloc_token
+(
+    o71_code_t * code_p,
+    o71_token_t * * token_pp
+);
+
+/*  free_token  */
+/**
+ *  Frees one token
+ */
+static o71_status_t free_token
+(
+    o71_code_t * code_p,
+    o71_token_t * token_p
+);
+
+/*  tokenize_source  */
+/**
+ *  Tokenizes source.
+ */
+static o71_status_t tokenize_source
+(
+    o71_code_t * code_p
+);
+
+/*  apply_grammar  */
+/**
+ *  Transforms the token list into a sequence of statements
+ */
+static o71_status_t apply_grammar
+(
+    o71_code_t * code_p
+);
+
 #if O71_DEBUG
+/*  obj_dump  */
+/**
+ *
+ */
 static void obj_dump
 (
     o71_world_t * world_p,
     o71_ref_t obj_r
 );
 
+/*  kvbag_dump  */
+/**
+ *
+ */
 static void kvbag_dump
 (
     o71_world_t * world_p,
     o71_kvbag_t * kvbag_p
 );
 
+/*  kvbag_array_dump  */
+/**
+ *
+ */
 static void kvbag_array_dump
 (
     o71_world_t * world_p,
@@ -686,7 +823,333 @@ static void kvbag_rbtree_dump
 #define kvbag_dump(_w, _k) ((void) 0)
 #endif
 
+static o71_status_t rule_nop (o71_code_t * code_p);
+
 static uint32_t init_exc_chain_start_xa[2] = { 0, 0 };
+
+
+/* grammar ******************************************************************/
+typedef struct grammar_rule_s grammar_rule_t;
+struct grammar_rule_s
+{
+    o71_status_t (* handler) (o71_code_t * code_p);
+    uint8_t target;
+    uint8_t sources[9];
+};
+
+#define R(_h, _t, ...) { _h, (_t), { __VA_ARGS__ } }
+static grammar_rule_t grammar[] =
+{
+    /* source := END */
+    R(rule_nop, O71_TT_SOURCE, O71_TT_END),
+
+    /* source := stmt_seq END */
+    R(rule_nop, O71_TT_SOURCE, O71_TT_STMT_SEQ, O71_TT_END),
+
+    /* stmt_seq := stmt_seq stmt */
+    R(rule_nop, O71_TT_STMT_SEQ, O71_TT_STMT_SEQ, O71_TT_STMT),
+
+    /* stmt_seq := stmt */
+    R(rule_nop, O71_TT_STMT_SEQ, O71_TT_STMT),
+
+    /* stmt := block_stmt */
+    R(rule_nop, O71_TT_STMT, O71_TT_BLOCK_STMT),
+
+    /* stmt := expr identifier "(" arg_decl_list ")" block_stmt */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_EXPR, O71_TT_IDENTIFIER, O71_TT_PAREN_OPEN, O71_TT_ARG_DECL_LIST,
+      O71_TT_PAREN_CLOSE, O71_TT_BLOCK_STMT),
+
+    /* stmt := expr var_init_list ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_EXPR, O71_TT_VAR_INIT_LIST, O71_TT_SEMICOLON),
+
+    /* stmt := expr ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_EXPR, O71_TT_SEMICOLON),
+
+    /* stmt := "return" ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_RETURN, O71_TT_SEMICOLON),
+
+    /* stmt := "return" expr ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_RETURN, O71_TT_EXPR, O71_TT_SEMICOLON),
+
+    /* stmt := if_stmt_start ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_IF_STMT_START, O71_TT_SEMICOLON),
+
+    /* stmt := if_stmt_start ";" "else" stmt */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_IF_STMT_START, O71_TT_SEMICOLON, O71_TT_ELSE, O71_TT_STMT),
+
+    /* stmt := "switch" "(" expr ")" block_stmt */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_SWITCH, O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE,
+      O71_TT_BLOCK_STMT),
+
+    /* stmt := do_stmt_start ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_DO_STMT_START, O71_TT_SEMICOLON),
+
+    /* stmt := do_stmt_start while_cond ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_DO_STMT_START, O71_TT_WHILE_COND, O71_TT_SEMICOLON),
+
+    /* stmt := "for" "(" expr_list ";" expr ";" expr_list ")" stmt */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_FOR, O71_TT_PAREN_OPEN, O71_TT_EXPR_LIST, O71_TT_SEMICOLON,
+      O71_TT_EXPR, O71_TT_SEMICOLON, O71_TT_EXPR_LIST, O71_TT_PAREN_CLOSE,
+      O71_TT_STMT),
+
+    /* stmt := "break" ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_BREAK, O71_TT_SEMICOLON),
+
+    /* stmt := "goto" identifier ";" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_GOTO, O71_TT_IDENTIFIER, O71_TT_SEMICOLON),
+
+    /* stmt := identifier ":" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_IDENTIFIER, O71_TT_COLON),
+
+    /* stmt := "case" expr ":" */
+    R(rule_nop, O71_TT_STMT,
+      O71_TT_CASE, O71_TT_EXPR, O71_TT_COLON),
+
+    /* if_stmt_start := "if" "(" expr ")" stmt */
+    R(rule_nop, O71_TT_IF_STMT_START,
+      O71_TT_IF, O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE, O71_TT_STMT),
+
+    /* do_stmt_start := "do" block_stmt */
+    R(rule_nop, O71_TT_DO_STMT_START,
+      O71_TT_DO, O71_TT_BLOCK_STMT),
+
+    /* while_cond := "while" "(" expr ")" */
+    R(rule_nop, O71_TT_WHILE_COND,
+      O71_TT_WHILE, O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE),
+
+    /* arg_decl_list := arg_decl */
+    R(rule_nop, O71_TT_ARG_DECL_LIST, O71_TT_ARG_DECL),
+    R(rule_nop, O71_TT_ARG_DECL_LIST,
+      O71_TT_ARG_DECL_LIST, O71_TT_COMMA, O71_TT_ARG_DECL),
+
+    R(rule_nop, O71_TT_ARG_DECL,
+      O71_TT_EXPR, O71_TT_IDENTIFIER, O71_TT_EQUAL, O71_TT_EXPR),
+    R(rule_nop, O71_TT_ARG_DECL,
+      O71_TT_EXPR, O71_TT_IDENTIFIER),
+
+    /* var_init_list := var_init */
+    R(rule_nop, O71_TT_VAR_INIT_LIST, O71_TT_VAR_INIT),
+
+    /* var_init_list := var_init_list "," var_init */
+    R(rule_nop, O71_TT_VAR_INIT_LIST,
+      O71_TT_VAR_INIT_LIST, O71_TT_COMMA, O71_TT_VAR_INIT),
+
+    /* var_init := identifier "=" expr */
+    R(rule_nop, O71_TT_VAR_INIT,
+      O71_TT_IDENTIFIER, O71_TT_EQUAL, O71_TT_EXPR),
+
+    /* var_init := identifier */
+    R(rule_nop, O71_TT_VAR_INIT,
+      O71_TT_IDENTIFIER),
+
+    /* expr_list := expr */
+    R(rule_nop, O71_TT_EXPR_LIST,
+      O71_TT_EXPR),
+
+    /* expr_list := expr_list "," expr */
+    R(rule_nop, O71_TT_EXPR_LIST,
+      O71_TT_EXPR_LIST, O71_TT_COMMA, O71_TT_EXPR),
+
+    /* atom_expr := integer */
+    R(rule_nop, O71_TT_ATOM_EXPR,
+      O71_TT_INTEGER),
+    /* atom_expr := string */
+    R(rule_nop, O71_TT_ATOM_EXPR,
+      O71_TT_STRING),
+    /* atom_expr := identifier */
+    R(rule_nop, O71_TT_ATOM_EXPR,
+      O71_TT_IDENTIFIER),
+    /* atom_expr := "(" expr ")" */
+    R(rule_nop, O71_TT_ATOM_EXPR,
+      O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE),
+
+    /* postfix_expr := atom_expr */
+    R(rule_nop, O71_TT_POSTFIX_EXPR,
+      O71_TT_ATOM_EXPR),
+    /* postfix_expr := postfix_expr "[" expr "]" */
+    R(rule_nop, O71_TT_POSTFIX_EXPR,
+      O71_TT_POSTFIX_EXPR, O71_TT_SQUARE_BRACKET_OPEN, O71_TT_EXPR,
+      O71_TT_SQUARE_BRACKET_CLOSE),
+    /* postfix_expr := postfix_expr "(" expr_list ")" */
+    R(rule_nop, O71_TT_POSTFIX_EXPR,
+      O71_TT_POSTFIX_EXPR, O71_TT_PAREN_OPEN, O71_TT_EXPR_LIST, O71_TT_PAREN_CLOSE),
+    /* postfix_expr := postfix_expr "." identifier */
+    R(rule_nop, O71_TT_POSTFIX_EXPR,
+      O71_TT_POSTFIX_EXPR, O71_TT_DOT, O71_TT_IDENTIFIER),
+
+    /* unary_operator := "+" | "-" | "!" | "~" */
+    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_PLUS),
+    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_PLUS_PLUS),
+    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_MINUS),
+    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_MINUS_MINUS),
+    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_EXCLAMATION),
+    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_TILDE),
+    /* prefix_expr := postfix_expr */
+    R(rule_nop, O71_TT_PREFIX_EXPR, O71_TT_POSTFIX_EXPR),
+    /* prefix_expr := unary_operator unary_expr */
+    R(rule_nop, O71_TT_PREFIX_EXPR, O71_TT_UNARY_OPERATOR, O71_TT_PREFIX_EXPR),
+
+    /* exp_operator := "<<" | ">>" | "**" */
+    R(rule_nop, O71_TT_EXP_OPERATOR, O71_TT_LESS_LESS),
+    R(rule_nop, O71_TT_EXP_OPERATOR, O71_TT_GREATER_GREATER),
+    R(rule_nop, O71_TT_EXP_OPERATOR, O71_TT_STAR_STAR),
+    /* exp_expr := exp_expr exp_operator prefix_expr */
+    R(rule_nop, O71_TT_EXP_EXPR,
+      O71_TT_EXP_EXPR, O71_TT_EXP_OPERATOR, O71_TT_PREFIX_EXPR),
+    /* exp_expr := prefix_expr */
+    R(rule_nop, O71_TT_EXP_EXPR, O71_TT_PREFIX_EXPR),
+
+    /* mul_operator := "*" | "/" | "%" */
+    R(rule_nop, O71_TT_MUL_OPERATOR, O71_TT_STAR),
+    R(rule_nop, O71_TT_MUL_OPERATOR, O71_TT_SLASH),
+    R(rule_nop, O71_TT_MUL_OPERATOR, O71_TT_PERCENT),
+    /* mul_expr := mul_expr mul_operator exp_expr */
+    R(rule_nop, O71_TT_MUL_EXPR,
+      O71_TT_MUL_EXPR, O71_TT_MUL_OPERATOR, O71_TT_EXP_EXPR),
+    /* mul_expr := or_expr */
+    R(rule_nop, O71_TT_MUL_EXPR, O71_TT_EXP_EXPR),
+
+    /* and_expr := mul_expr */
+    R(rule_nop, O71_TT_AND_EXPR, O71_TT_MUL_EXPR),
+    /* and_expr := and_expr "&" mul_expr */
+    R(rule_nop, O71_TT_AND_EXPR, O71_TT_AND_EXPR, O71_TT_AMPERSAND, O71_TT_MUL_EXPR),
+
+    /* xor_expr := and_expr */
+    R(rule_nop, O71_TT_XOR_EXPR, O71_TT_AND_EXPR),
+    /* xor_expr := xor_expr "^" and_expr */
+    R(rule_nop, O71_TT_XOR_EXPR, O71_TT_XOR_EXPR, O71_TT_CARET, O71_TT_AND_EXPR),
+
+    /* or_expr := xor_expr */
+    R(rule_nop, O71_TT_OR_EXPR, O71_TT_XOR_EXPR),
+    /* or_expr := or_expr "|" xor_expr */
+    R(rule_nop, O71_TT_OR_EXPR, O71_TT_OR_EXPR, O71_TT_PIPE, O71_TT_XOR_EXPR),
+
+    /* add_operator := "+" | "-" */
+    R(rule_nop, O71_TT_ADD_OPERATOR, O71_TT_PLUS),
+    R(rule_nop, O71_TT_ADD_OPERATOR, O71_TT_MINUS),
+    /* add_expr := mul_expr */
+    R(rule_nop, O71_TT_ADD_EXPR, O71_TT_MUL_EXPR),
+    /* add_expr := add_expr add_operator mul_expr */
+    R(rule_nop, O71_TT_ADD_EXPR,
+      O71_TT_ADD_EXPR, O71_TT_ADD_OPERATOR, O71_TT_MUL_EXPR),
+
+    /* cmp_operator := "<" | "<=" | ">" | ">=" */
+    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_LESS),
+    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_LESS_EQUAL),
+    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_GREATER),
+    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_GREATER_EQUAL),
+    /* cmp_expr := cmp_expr cmp_operator add_expr */
+    R(rule_nop, O71_TT_CMP_EXPR,
+      O71_TT_CMP_EXPR, O71_TT_CMP_OPERATOR, O71_TT_ADD_EXPR),
+    /* cmp_expr := add_operator */
+    R(rule_nop, O71_TT_CMP_EXPR, O71_TT_ADD_EXPR),
+
+    /* equ_operator := "==" | "!=" */
+    R(rule_nop, O71_TT_EQU_OPERATOR, O71_TT_EQUAL_EQUAL),
+    R(rule_nop, O71_TT_EQU_OPERATOR, O71_TT_EXCLAMATION_EQUAL),
+    /* equ_expr := equ_expr equ_operator cmp_expr */
+    R(rule_nop, O71_TT_EQU_EXPR,
+      O71_TT_EQU_EXPR, O71_TT_EQU_OPERATOR, O71_TT_CMP_EXPR),
+    /* equ_expr := cmp_expr */
+    R(rule_nop, O71_TT_EQU_EXPR, O71_TT_CMP_EXPR),
+
+    /* logic_and_expr := equ_expr */
+    R(rule_nop, O71_TT_LOGIC_AND_EXPR, O71_TT_EQU_EXPR),
+    /* logic_and_expr := logic_and_expr "&&" equ_expr */
+    R(rule_nop, O71_TT_LOGIC_AND_EXPR, O71_TT_AMPERSAND_AMPERSAND, O71_TT_EQU_EXPR),
+
+    /* logic_or_expr := logic_and_expr */
+    R(rule_nop, O71_TT_LOGIC_OR_EXPR, O71_TT_LOGIC_AND_EXPR),
+    /* logic_or_expr := logic_or_expr "||" logic_and_expr */
+    R(rule_nop, O71_TT_LOGIC_OR_EXPR,
+      O71_TT_LOGIC_OR_EXPR, O71_TT_PIPE_PIPE, O71_TT_LOGIC_AND_EXPR),
+
+    /* cond_expr := logic_or_expr "?" expr ":" cond_expr */
+    R(rule_nop, O71_TT_COND_EXPR,
+      O71_TT_LOGIC_OR_EXPR, O71_TT_QUESTION, O71_TT_EXPR, O71_TT_EXPR, O71_TT_COLON,
+      O71_TT_COND_EXPR),
+    /* cond_expr := logic_or_expr */
+    R(rule_nop, O71_TT_COND_EXPR, O71_TT_LOGIC_OR_EXPR),
+
+    /* asg_operator := "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" " | "^=" | "<<=" | ">>=" | "**=" | "&&=" | "||=" */
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PLUS_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_MINUS_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_STAR_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_SLASH_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PERCENT_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_AMPERSAND_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PIPE_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_CARET_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_LESS_LESS_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_GREATER_GREATER_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_STAR_STAR_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_AMPERSAND_AMPERSAND_EQUAL),
+    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PIPE_PIPE_EQUAL),
+    /* expr := cond_expr */
+    R(rule_nop, O71_TT_EXPR, O71_TT_COND_EXPR),
+    /* expr := postfix_expr asg_operator cond_expr */
+    R(rule_nop, O71_TT_EXPR,
+      O71_TT_POSTFIX_EXPR, O71_TT_ASG_OPERATOR, O71_TT_COND_EXPR),
+};
+
+/* utf8_codepoint_length ****************************************************/
+static unsigned int utf8_codepoint_length
+(
+    uint32_t codepoint
+)
+{
+    if (codepoint < 0x80) return 1;
+    if (codepoint < 0x800) return 2;
+    if (codepoint < 0x10000) return 3;
+    return 4;
+}
+
+/* utf8_codepoint_encode ****************************************************/
+static unsigned int utf8_codepoint_encode
+(
+    uint8_t * out,
+    uint32_t codepoint
+)
+{
+    if (codepoint < 0x80)
+    {
+        out[0] = (uint8_t) codepoint;
+        return 1;
+    }
+    if (codepoint < 0x800)
+    {
+        out[0] = 0xC0 | (uint8_t) (codepoint >> 6);
+        out[1] = 0x80 | (uint8_t) (codepoint & 0x3F);
+        return 2;
+    }
+    if (codepoint < 0x10000)
+    {
+        out[0] = 0xE0 | (uint8_t) (codepoint >> 12);
+        out[1] = 0x80 | (uint8_t) ((codepoint >> 6) & 0x3F);
+        out[2] = 0x80 | (uint8_t) (codepoint & 0x3F);
+        return 3;
+    }
+    out[0] = 0xF0 | (uint8_t) (codepoint >> 16);
+    out[1] = 0x80 | (uint8_t) ((codepoint >> 12) & 0x3F);
+    out[2] = 0x80 | (uint8_t) ((codepoint >> 6) & 0x3F);
+    out[3] = 0x80 | (uint8_t) (codepoint & 0x3F);
+    return 4;
+}
 
 /* o71_status_name **********************************************************/
 O71_API char const * o71_status_name
@@ -736,36 +1199,40 @@ O71_API char const * o71_status_name
 #undef X
 }
 
+/* o71_allocator_init *******************************************************/
+O71_API o71_allocator_t * o71_allocator_init
+(
+    o71_allocator_t * allocator_p,
+    o71_realloc_f realloc,
+    void * context,
+    size_t mem_limit
+)
+{
+    allocator_p->realloc = realloc;
+    allocator_p->context = context;
+    allocator_p->mem_usage = 0;
+    allocator_p->mem_peak = 0;
+    allocator_p->mem_limit = mem_limit;
+    return allocator_p;
+}
+
 /* o71_world_init ***********************************************************/
 O71_API o71_status_t o71_world_init
 (
     o71_world_t * world_p,
-    o71_status_t (* realloc)
-        (
-            void * * data_pp,
-            size_t old_size,
-            size_t new_size,
-            void * realloc_context
-        ),
-    void * realloc_context,
-    size_t mem_limit
+    o71_allocator_t * allocator_p
 )
 {
     o71_status_t os;
 
-    world_p->realloc = realloc;
-    world_p->realloc_context = realloc_context;
-
-    world_p->mem_usage = 0;
-    world_p->mem_peak = 0;
-    world_p->mem_limit = mem_limit;
+    world_p->allocator_p = allocator_p;
     world_p->flow_id_seed = 0;
-
     world_p->cleaning = 0;
     world_p->free_list_head_x = 0;
     world_p->destroy_list_head_x = 0;
     world_p->obj_pa = NULL;
     world_p->obj_n = 0;
+
     os = extend_object_table(world_p);
     if (os) return os;
 
@@ -1011,7 +1478,7 @@ O71_API o71_status_t o71_world_init
 
         os = o71_ics(world_p, &exe_ctx_isr, "exe_ctx");
         if (os) { M("fail: %s", N(os)); break; }
-        os = redim(world_p,
+        os = redim(world_p->allocator_p,
                    (void * *) &world_p->exception_class.fix_field_ofs_a,
                    &world_p->exception_class.fix_field_n,
                    1, sizeof(o71_ref_t));
@@ -1062,7 +1529,8 @@ O71_API o71_status_t o71_world_finish
     os = o71_cleanup(world_p);
     AOS(os);
 
-    os = redim(world_p, (void * *) &world_p->obj_pa, &world_p->obj_n, 0,
+    os = redim(world_p->allocator_p,
+               (void * *) &world_p->obj_pa, &world_p->obj_n, 0,
                sizeof(void *));
     if (os) return os;
     M("goodbye cruel world %p!", world_p);
@@ -1244,7 +1712,8 @@ O71_API o71_status_t o71_cleanup
         free_head_x = ~mo_p->enc_destroy_next_x;
         //class_p = world_p->obj_pa[O71_REF_TO_MOX(mo_p->class_r)];
         obj_size = mo_p->object_size;
-        os = redim(world_p, world_p->obj_pa + obj_x, &obj_size, 0, 1);
+        os = redim(world_p->allocator_p, world_p->obj_pa + obj_x, &obj_size, 0,
+                   1);
         if (os)
         {
             M("obj mem free failed: %s", N(os));
@@ -1288,7 +1757,7 @@ O71_API o71_status_t o71_cstring
     str_p->n = str_p->m = 0;
     str_p->mode = O71_SM_MODIFIABLE;
     for (n = 0; cstr_a[n]; ++n);
-    os = redim(world_p, (void * *) &str_p->a, &str_p->m, n, 1);
+    os = redim(world_p->allocator_p, (void * *) &str_p->a, &str_p->m, n, 1);
     if (os)
     {
         M("failed to allocate string data: n=%zu os=%s", n, N(os));
@@ -1586,8 +2055,8 @@ O71_API o71_status_t o71_sfunc_create
     sfunc_p->exc_chain_n = 1;
     sfunc_p->exc_chain_m = 0;
     sfunc_p->valid = 0;
-    os = redim(world_p, (void * *) &sfunc_p->arg_xa, &sfunc_p->arg_n, arg_n,
-               sizeof(uint32_t));
+    os = redim(world_p->allocator_p, (void * *) &sfunc_p->arg_xa,
+               &sfunc_p->arg_n, arg_n, sizeof(uint32_t));
     if (os)
     {
         M("failed to allocate arg index array: %s", N(os));
@@ -1772,7 +2241,8 @@ O71_API o71_status_t o71_alloc_exc_chain
     {
         size_t new_m;
         new_m = (ecn + 4) & ~3;
-        os = redim(world_p, (void * *) &sfunc_p->exc_chain_start_xa,
+        os = redim(world_p->allocator_p,
+                   (void * *) &sfunc_p->exc_chain_start_xa,
                    &sfunc_p->exc_chain_m, new_m,
                    sizeof(sfunc_p->exc_chain_start_xa[0]));
         if (os) { M("ouch: %s", N(os)); return os; }
@@ -1787,7 +2257,7 @@ O71_API o71_status_t o71_alloc_exc_chain
     if (ehn > sfunc_p->exc_handler_m)
     {
         size_t ehm = (ehn + 3) &~3;
-        os = redim(world_p, (void * *) &sfunc_p->exc_handler_a,
+        os = redim(world_p->allocator_p, (void * *) &sfunc_p->exc_handler_a,
                    &sfunc_p->exc_handler_m, ehm,
                    sizeof(sfunc_p->exc_handler_a[0]));
         if (os) { M("ouch: %s", N(os)); return os; }
@@ -2060,7 +2530,7 @@ O71_API o71_status_t o71_reg_obj_get_field
         if (field_istr_r == key_r)
         {
             /* found fixed field */
-            *value_rp = *(o71_ref_t *) ((uint8_t *) obj_p + 
+            *value_rp = *(o71_ref_t *) ((uint8_t *) obj_p +
                                         class_p->fix_field_ofs_a[c].value_r);
             return O71_OK;
         }
@@ -2193,7 +2663,7 @@ O71_API o71_status_t o71_reg_class_create
     class_p->finish = noop_object_finish;
     class_p->get_field = get_reg_obj_field;
     class_p->set_field = set_reg_obj_field;
-    class_p->object_size = sizeof(o71_reg_obj_t) 
+    class_p->object_size = sizeof(o71_reg_obj_t)
         + sizeof(o71_ref_t) * fix_field_n;
     class_p->dyn_field_ofs = FIELD_OFS(o71_reg_obj_t, dyn_field_bag);
     kvbag_init(&class_p->method_bag, 0x10);
@@ -2204,13 +2674,14 @@ O71_API o71_status_t o71_reg_class_create
         free_object(world_p, class_x);
         return os;
     }
-    os = redim(world_p, (void * *) &class_p->fix_field_ofs_a,
+    os = redim(world_p->allocator_p, (void * *) &class_p->fix_field_ofs_a,
                &class_p->fix_field_n, fix_field_n, sizeof(o71_kv_t));
     if (os)
     {
         o71_status_t os2;
         M("fail: %s", N(os));
-        os2 = redim(world_p, (void * *) &class_p->super_ra, &class_p->super_n,
+        os2 = redim(world_p->allocator_p,
+                    (void * *) &class_p->super_ra, &class_p->super_n,
                     0, sizeof(o71_ref_t));
         AOS(os2);
         free_object(world_p, class_x);
@@ -2230,97 +2701,28 @@ O71_API o71_status_t o71_reg_class_create
 O71_API o71_status_t o71_compile
 (
     o71_code_t * code_p,
+    o71_allocator_t * allocator_p,
     char const * src_name,
     uint8_t const * src_a,
     size_t src_n
 )
 {
-    size_t ofs;
-    uint32_t row, col, ch;
-    int chlen, ce;
+    o71_status_t os;
+
+    code_p->allocator_p = allocator_p;
     code_p->src_name = src_name;
     code_p->src_a = src_a;
     code_p->src_n = src_n;
     code_p->token_a = NULL;
     code_p->token_n = 0;
     code_p->token_m = 0;
-#define CE(_e) { ce = _e; break; }
-    ce = O71_COMPILE_OK;
-    for (ofs = 0, row = 1, col = 1; ofs < src_n; ofs += chlen)
-    {
-        if (src_a[ofs] < 0x20)
-        {
-            if (src_a[ofs] == '\r')
-            {
-                row += 1;
-                col = 1;
-                if (ofs + 1 < src_n && src_a[ofs + 1] == '\n')
-                {
-                    chlen += 2;
-                    continue;
-                }
-                chlen = 1;
-                continue;
-            }
-            if (src_a[ofs] == '\n')
-            {
-                row += 1;
-                col = 1;
-                chlen = 1;
-                continue;
-            }
-            CE(O71_CE_PARSE_BAD_CONTROL_CHAR);
-        }
-        if (src_a[ofs] < 0x80)
-        {
-            chlen = 1;
-            continue; 
-        }
-        if (src_a[ofs] < 0xC0) CE(O71_CE_PARSE_BAD_UTF8_START_BYTE);
-        if (src_a[ofs] < 0xE0)
-        {
-            if (ofs + 2 > src_n)
-                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
-            if ((src_a[ofs + 1] & 0xC0) != 0x80)
-                CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
-            if (src_a[ofs] < 0xC2)
-                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
-            chlen = 2;
-            col += 1;
-        }
-        if (src_a[ofs] < 0xF0)
-        {
-            if (ofs + 3 > src_n)
-                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
-            if (((src_a[ofs + 1] | src_a[ofs + 2]) & 0xC0) != 0x80)
-                CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
-            if (src_a[ofs] == 0xE0 && src_a[ofs + 1] < 0xA0)
-                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
-            if (src_a[ofs] == 0xED && src_a[ofs + 1] >= 0xA0)
-                CE(O71_CE_PARSE_SURROGATE_CODEPOINT);
-            chlen = 3;
-            col += 1;
-        }
-        if (src_a[ofs] < 0xF8)
-        {
-            if (ofs + 4 > src_n)
-                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
-            if (((src_a[ofs + 1] | src_a[ofs + 2] | src_a[ofs + 3]) & 0xC0)
-                != 0x80) CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
-            if (src_a[ofs] == 0xF0 && src_a[ofs + 1] < 0x90)
-                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
-        }
-        CE(O71_CE_PARSE_BAD_UTF8_START_BYTE);
-    }
-    if (ce)
-    {
-        code_p->ce_code = ce;
-        code_p->ce_row = row;
-        code_p->ce_col = col;
-        code_p->ce_ofs = ofs;
-        return O71_COMPILE_ERROR;
-    }
 
+    os = tokenize_source(code_p);
+    if (os) return os;
+
+    os = apply_grammar(code_p);
+    if (os) return os;
+    
     return O71_TODO;
 }
 
@@ -2330,6 +2732,14 @@ O71_API o71_status_t o71_code_free
     o71_code_t * code_p
 )
 {
+    o71_status_t os;
+    size_t i;
+    for (i = 0; i < code_p->token_n; ++i)
+    {
+        os = free_token(code_p, code_p->token_a + i);
+        AOS(os);
+    }
+    FREE_ARRAY(code_p->allocator_p, code_p->token_a, code_p->token_n);
     return O71_OK;
 }
 
@@ -2349,7 +2759,7 @@ static uint8_t log2_rounded_up
 /* redim ********************************************************************/
 static o71_status_t redim
 (
-    o71_world_t * world_p,
+    o71_allocator_t * allocator_p,
     void * * data_pp,
     size_t * crt_count_p,
     size_t new_count,
@@ -2362,13 +2772,13 @@ static o71_status_t redim
     old_count = *crt_count_p;
     if (new_count > old_count
         && (new_count - old_count) * item_size
-            > world_p->mem_limit - world_p->mem_usage)
+            > allocator_p->mem_limit - allocator_p->mem_usage)
     {
         M("reached mem limit");
         return O71_MEM_LIMIT;
     }
-    os = world_p->realloc(data_pp, old_count * item_size, new_count * item_size,
-                          world_p->realloc_context);
+    os = allocator_p->realloc(data_pp, old_count * item_size,
+                              new_count * item_size, allocator_p->context);
     A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
     if (os)
     {
@@ -2378,16 +2788,16 @@ static o71_status_t redim
     /* allocated block must be pointer aligned */
     A(((uintptr_t) *data_pp & (sizeof(uintptr_t) - 1)) == 0);
     *crt_count_p = new_count;
-    world_p->mem_usage += (new_count - old_count) * item_size;
-    if (world_p->mem_usage > world_p->mem_peak)
-        world_p->mem_peak = world_p->mem_usage;
+    allocator_p->mem_usage += (new_count - old_count) * item_size;
+    if (allocator_p->mem_usage > allocator_p->mem_peak)
+        allocator_p->mem_peak = allocator_p->mem_usage;
     return O71_OK;
 }
 
 /* extend_array *************************************************************/
 static o71_status_t extend_array
 (
-    o71_world_t * world_p,
+    o71_allocator_t * allocator_p,
     void * * extra_ap,
     void * * data_ap,
     size_t * crt_alloc_count_p,
@@ -2406,7 +2816,7 @@ static o71_status_t extend_array
     if (new_n > *crt_alloc_count_p)
     {
         new_m = 1 << log2_rounded_up(new_n);
-        os = redim(world_p, data_ap, crt_alloc_count_p, new_m, item_size);
+        os = redim(allocator_p, data_ap, crt_alloc_count_p, new_m, item_size);
         if (os) return os;
     }
     *extra_ap = ((uint8_t *) *data_ap) + used_n * item_size;
@@ -2441,8 +2851,8 @@ static o71_status_t extend_object_table
     n = world_p->obj_n;
     if (n > (SIZE_MAX >> 1)) return O71_ARRAY_LIMIT;
     m = n ? n << 1 : 0x20;
-    os = redim(world_p, (void * *) &world_p->obj_pa, &world_p->obj_n, m,
-               sizeof(void *));
+    os = redim(world_p->allocator_p,
+               (void * *) &world_p->obj_pa, &world_p->obj_n, m, sizeof(void *));
     if (os)
     {
         M("failed extending object table from %zu to %zu items", n, m);
@@ -2522,7 +2932,7 @@ static o71_status_t alloc_object
     obj_x = *obj_xp;
     class_p = world_p->obj_pa[O71_REF_TO_MOX(class_r)];
     obj_size = 0;
-    os = redim(world_p, world_p->obj_pa + obj_x,
+    os = redim(world_p->allocator_p, world_p->obj_pa + obj_x,
                &obj_size, class_p->object_size, 1);
     if (os)
     {
@@ -2564,7 +2974,7 @@ static o71_status_t free_object
     class_r = obj_p->class_r;
     class_p = world_p->obj_pa[O71_REF_TO_MOX(class_r)];
     obj_size = class_p->object_size;
-    os = redim(world_p, world_p->obj_pa + obj_x, &obj_size, 0, 1);
+    os = redim(world_p->allocator_p, world_p->obj_pa + obj_x, &obj_size, 0, 1);
     if (os)
     {
         M("*** BUG *** error freeing object memory: %s", N(os));
@@ -3107,7 +3517,8 @@ static o71_status_t sfunc_alloc_code
         return O71_ARRAY_LIMIT;
     }
 
-    os = extend_array(world_p, (void * *) insn_ap, (void * *) &sfunc_p->insn_a,
+    os = extend_array(world_p->allocator_p,
+                      (void * *) insn_ap, (void * *) &sfunc_p->insn_a,
                       &sfunc_p->insn_m, &sfunc_p->insn_n, insn_n,
                       sizeof(o71_insn_t));
     if (os)
@@ -3118,7 +3529,8 @@ static o71_status_t sfunc_alloc_code
     M("sfunc=%p; insn: a=%p, n=%zu, m=%zu",
       sfunc_p, sfunc_p->insn_a, sfunc_p->insn_n, sfunc_p->insn_m);
 
-    os = extend_array(world_p, (void * *) opnd_ap, (void * *) &sfunc_p->opnd_a,
+    os = extend_array(world_p->allocator_p,
+                      (void * *) opnd_ap, (void * *) &sfunc_p->opnd_a,
                       &sfunc_p->opnd_m, &sfunc_p->opnd_n, opnd_n,
                       sizeof(uint32_t));
     if (os)
@@ -3154,7 +3566,7 @@ static o71_status_t sfunc_add_const
         }
 
     *const_xp = sfunc_p->const_n;
-    os = extend_array(world_p, (void * *) &const_rp,
+    os = extend_array(world_p->allocator_p, (void * *) &const_rp,
                       (void * *) &sfunc_p->const_ra,
                       &sfunc_p->const_m, &sfunc_p->const_n, 1,
                       sizeof(o71_ref_t));
@@ -3239,7 +3651,7 @@ static o71_status_t str_finish
     }
     if (str_p->m)
     {
-        os = redim(world_p, (void * *) &str_p->a, &str_p->m, 0, 1);
+        os = redim(world_p->allocator_p, (void * *) &str_p->a, &str_p->m, 0, 1);
         AOS(os);
     }
     return O71_OK;
@@ -3411,7 +3823,7 @@ static o71_status_t kvbag_insert
             }
             m = kvbag_p->m;
             nm = m ? m << 1 : (kvbag_p->l < 2 ? kvbag_p->l : 2);
-            os = redim(world_p, (void * *) &kvbag_p->kv_a, &m, nm,
+            os = redim(world_p->allocator_p, (void * *) &kvbag_p->kv_a, &m, nm,
                        sizeof(o71_kv_t));
             if (os)
             {
@@ -3486,7 +3898,8 @@ static o71_status_t kvbag_rbtree_node_alloc
 )
 {
     size_t n = 0;
-    return redim(world_p, (void * *) kvnode_pp, &n, 1, sizeof(o71_kvnode_t));
+    return redim(world_p->allocator_p, (void * *) kvnode_pp, &n, 1,
+                 sizeof(o71_kvnode_t));
 }
 
 /* kvbag_rbtree_node_free ***************************************************/
@@ -3497,7 +3910,8 @@ static o71_status_t kvbag_rbtree_node_free
 )
 {
     size_t n = 1;
-    return redim(world_p, (void * *) &kvnode_p, &n, 0, sizeof(o71_kvnode_t));
+    return redim(world_p->allocator_p, (void * *) &kvnode_p, &n, 0,
+                 sizeof(o71_kvnode_t));
 }
 
 /* kvbag_rbtree_free ********************************************************/
@@ -4142,7 +4556,7 @@ static o71_status_t merge_sorted_refs
     A(dest_rnp + src_n >= dest_rnp);
     i = (ptrdiff_t) *dest_rnp - 1;
     k = (ptrdiff_t) (*dest_rnp + src_n);
-    os = redim(world_p, (void * *) dest_rap, dest_rnp, (size_t) k,
+    os = redim(world_p->allocator_p, (void * *) dest_rap, dest_rnp, (size_t) k,
                sizeof(o71_ref_t));
     if (os) return os;
     dest_ra = *dest_rap;
@@ -4308,6 +4722,531 @@ static o71_status_t set_reg_obj_field
     return o71_reg_obj_set_field(flow_p->world_p, obj_r, field_r, value_r);
 }
 
+/* alloc_token **************************************************************/
+static o71_status_t alloc_token
+(
+    o71_code_t * code_p,
+    o71_token_t * * token_pp
+)
+{
+    o71_status_t os;
+    os = extend_array(code_p->allocator_p, (void * *) token_pp,
+                      (void * *) &code_p->token_a, &code_p->token_m,
+                      &code_p->token_n, 1, sizeof(o71_token_t));
+    if (os)
+    {
+        M("failed extending token array: %s", N(os));
+        return os;
+    }
+
+    return O71_OK;
+}
+
+/* free_token ***************************************************************/
+static o71_status_t free_token
+(
+    o71_code_t * code_p,
+    o71_token_t * token_p
+)
+{
+    o71_status_t os;
+    switch (token_p->type)
+    {
+    case O71_TT_STRING:
+        FREE_ARRAY(code_p->allocator_p, token_p->str.a, token_p->str.n);
+        return O71_OK;
+    }
+    return O71_OK;
+}
+
+/* rule_nop *****************************************************************/
+static o71_status_t rule_nop (o71_code_t * code_p)
+{
+    (void) code_p;
+    return 0;
+}
+
+/* tokenize_source **********************************************************/
+static o71_status_t tokenize_source
+(
+    o71_code_t * code_p
+)
+{
+    size_t ofs;
+    uint32_t row, col, ch, nch;
+    int chlen, ce, digit;
+    o71_status_t os;
+    o71_token_t * tp;
+    unsigned int base;
+    size_t str_n, i;
+    o71_allocator_t * allocator_p;
+    uint8_t const * src_a;
+    size_t src_n;
+
+    allocator_p = code_p->allocator_p;
+    src_a = code_p->src_a;
+    src_n = code_p->src_n;
+#define CE(_e) { ce = _e; break; }
+    ce = O71_COMPILE_OK;
+    for (ofs = 0, row = 1, col = 1; ofs < src_n; ofs += chlen)
+    {
+        if (src_a[ofs] < 0x20)
+        {
+            if (src_a[ofs] == '\r')
+            {
+                row += 1;
+                col = 1;
+                if (ofs + 1 < src_n && src_a[ofs + 1] == '\n')
+                {
+                    chlen += 2;
+                    continue;
+                }
+                chlen = 1;
+                continue;
+            }
+            if (src_a[ofs] == '\n')
+            {
+                row += 1;
+                col = 1;
+                chlen = 1;
+                continue;
+            }
+            CE(O71_CE_PARSE_BAD_CONTROL_CHAR);
+        }
+        if (src_a[ofs] < 0x80)
+        {
+            chlen = 1;
+            continue;
+        }
+        if (src_a[ofs] < 0xC0) CE(O71_CE_PARSE_BAD_UTF8_START_BYTE);
+        if (src_a[ofs] < 0xE0)
+        {
+            if (ofs + 2 > src_n)
+                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
+            if ((src_a[ofs + 1] & 0xC0) != 0x80)
+                CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
+            if (src_a[ofs] < 0xC2)
+                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
+            chlen = 2;
+            col += 1;
+        }
+        if (src_a[ofs] < 0xF0)
+        {
+            if (ofs + 3 > src_n)
+                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
+            if (((src_a[ofs + 1] | src_a[ofs + 2]) & 0xC0) != 0x80)
+                CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
+            if (src_a[ofs] == 0xE0 && src_a[ofs + 1] < 0xA0)
+                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
+            if (src_a[ofs] == 0xED && src_a[ofs + 1] >= 0xA0)
+                CE(O71_CE_PARSE_SURROGATE_CODEPOINT);
+            chlen = 3;
+            col += 1;
+        }
+        if (src_a[ofs] < 0xF8)
+        {
+            if (ofs + 4 > src_n)
+                CE(O71_CE_PARSE_TRUNCATED_UTF8_CHAR);
+            if (((src_a[ofs + 1] | src_a[ofs + 2] | src_a[ofs + 3]) & 0xC0)
+                != 0x80) CE(O71_CE_PARSE_BAD_UTF8_CONTINUATION);
+            if (src_a[ofs] == 0xF0 && src_a[ofs + 1] < 0x90)
+                CE(O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR);
+        }
+        CE(O71_CE_PARSE_BAD_UTF8_START_BYTE);
+    }
+
+    if (!ce) for (ofs = 0, row = 1, col = 1; ofs < src_n; )
+    {
+        ch = src_a[ofs];
+        if (ch <= 0x20)
+        {
+            if (ch == ' ') { col += 1; ofs += 1; continue; }
+            A(ch == '\n' || ch == '\r');
+            if (ch == '\r')
+            {
+                if (ofs + 1 < src_n && src_a[ofs + 1] == '\n') ++ofs;
+            }
+            ++ofs;
+            ++row;
+            col = 1;
+            continue;
+        }
+        /* non-whitespace character */
+        if (ch == '#')
+        {
+            /* skip until EOL */
+            for (; ofs < src_n && src_a[ofs] >= 0x20; ++ofs);
+            /* don't bother to update the column here as we either reached
+             * end of line or end of file */
+            continue;
+        }
+
+        os = alloc_token(code_p, &tp);
+        if (os) return os;
+        tp->type = O71_TT_END;
+        tp->src_ofs = ofs;
+        tp->src_row = row;
+        tp->src_col = col;
+        if (IS_ID_START_CHAR(ch))
+        {
+            for (++ofs; ofs < src_n && IS_ID_BODY_CHAR(src_a[ofs]); ++ofs);
+            tp->src_len = ofs - tp->src_ofs;
+            tp->type = O71_TT_IDENTIFIER;
+            col += ofs - tp->src_ofs;
+            M("identifier: '%.*s'", (int) tp->src_len, &src_a[tp->src_ofs]);
+            continue;
+        }
+        if (IS_DIGIT(ch))
+        {
+            base = 10;
+            if (ch == '0' && ofs + 1 < src_n)
+            {
+                ch = src_a[++ofs];
+                switch (ch)
+                {
+                case 'b': ++ofs; base = 2; break;
+                case 'o': ++ofs; base = 8; break;
+                case 'd': ++ofs; base = 10; break;
+                case 'x': ++ofs; base = 16; break;
+                }
+            }
+            tp->num = 0;
+            for (; ofs < src_n &&
+                 (src_a[ofs] == '_' || IS_DIGIT(src_a[ofs]) ||
+                  IS_ALPHA(src_a[ofs]));
+                 ++ofs)
+            {
+                if (src_a[ofs] == '_') continue;
+                digit = ALPHANUM_TO_DIGIT(src_a[ofs]);
+                if (digit >= (int) base) CE(O71_CE_PARSE_BAD_NUMBER);
+                tp->num = tp->num * base + digit;
+            }
+            if (ce) break;
+            tp->src_len = ofs - tp->src_ofs;
+            tp->type = O71_TT_INTEGER;
+            col += ofs - tp->src_ofs;
+            M("integer: %"PRIu64, tp->num);
+            continue;
+        }
+        ++ofs;
+        nch = ofs < src_n ? src_a[ofs] : 0;
+        switch (ch)
+        {
+        case '~': tp->type = O71_TT_TILDE; break;
+        case '?': tp->type = O71_TT_QUESTION; break;
+        case '(': tp->type = O71_TT_PAREN_OPEN; break;
+        case ')': tp->type = O71_TT_PAREN_CLOSE; break;
+        case '[': tp->type = O71_TT_SQUARE_BRACKET_OPEN; break;
+        case ']': tp->type = O71_TT_SQUARE_BRACKET_CLOSE; break;
+        case '{': tp->type = O71_TT_CURLY_BRACKET_OPEN; break;
+        case '}': tp->type = O71_TT_CURLY_BRACKET_CLOSE; break;
+        case '.': tp->type = O71_TT_DOT; break;
+        case ',': tp->type = O71_TT_COMMA; break;
+        case ';': tp->type = O71_TT_SEMICOLON; break;
+        case ':': tp->type = O71_TT_COLON; break;
+        case '!':
+            if (nch == '=') { ++ofs; tp->type = O71_TT_EXCLAMATION_EQUAL; }
+            else tp->type = O71_TT_EXCLAMATION;
+            break;
+        case '%':
+            if (nch == '=') { ++ofs; tp->type = O71_TT_PERCENT_EQUAL; }
+            else tp->type = O71_TT_PERCENT;
+            break;
+        case '^':
+            if (nch == '=') { ++ofs; tp->type = O71_TT_CARET_EQUAL; }
+            else tp->type = O71_TT_CARET;
+            break;
+        case '&':
+            switch (nch)
+            {
+            case '&':
+                if (++ofs < src_n && src_a[ofs] == '=')
+                {
+                    ++ofs;
+                    tp->type = O71_TT_AMPERSAND_AMPERSAND_EQUAL;
+                    break;
+                }
+                else tp->type = O71_TT_AMPERSAND_AMPERSAND;
+                break;
+            case '=': ++ofs; tp->type = O71_TT_AMPERSAND_EQUAL; break;
+            }
+            break;
+        case '|':
+            switch (nch)
+            {
+            case '&':
+                if (++ofs < src_n && src_a[ofs] == '=')
+                {
+                    ++ofs;
+                    tp->type = O71_TT_PIPE_PIPE_EQUAL;
+                    break;
+                }
+                else tp->type = O71_TT_PIPE_PIPE;
+                break;
+            case '=': ++ofs; tp->type = O71_TT_PIPE_EQUAL; break;
+            }
+            break;
+        case '+':
+            switch (nch)
+            {
+            case '+': ++ofs; tp->type = O71_TT_PLUS_PLUS; break;
+            case '=': ++ofs; tp->type = O71_TT_PLUS_EQUAL; break;
+            default: tp->type = O71_TT_PLUS;
+            }
+            break;
+        case '-':
+            switch (nch)
+            {
+            case '-': ++ofs; tp->type = O71_TT_MINUS_MINUS; break;
+            case '=': ++ofs; tp->type = O71_TT_MINUS_EQUAL; break;
+            default: tp->type = O71_TT_MINUS;
+            }
+            break;
+        case '*':
+            switch (nch)
+            {
+            case '*':
+                if (++ofs < src_n && src_a[ofs] == '=')
+                {
+                    ++ofs;
+                    tp->type = O71_TT_STAR_STAR_EQUAL;
+                }
+                else tp->type = O71_TT_STAR_STAR;
+                break;
+            case '=': ++ofs; tp->type = O71_TT_STAR_EQUAL; break;
+            default: tp->type = O71_TT_STAR;
+            }
+            break;
+        case '/':
+            if (nch == '=') { ++ofs; tp->type = O71_TT_SLASH_EQUAL; }
+            else tp->type = O71_TT_SLASH;
+            break;
+        case '=':
+            if (nch == '=') { ++ofs; tp->type = O71_TT_EQUAL_EQUAL; }
+            else tp->type = O71_TT_EQUAL;
+            break;
+        case '<':
+            switch (nch)
+            {
+            case '<':
+                if (++ofs < src_n && src_a[ofs] == '=')
+                {
+                    ++ofs;
+                    tp->type = O71_TT_LESS_LESS_EQUAL;
+                }
+                else tp->type = O71_TT_LESS_LESS;
+                break;
+            case '=':
+                ++ofs;
+                tp->type = O71_TT_LESS_EQUAL;
+                break;
+            default:
+                tp->type = O71_TT_LESS;
+            }
+            break;
+        case '>':
+            switch (nch)
+            {
+            case '>':
+                if (++ofs < src_n && src_a[ofs] == '=')
+                {
+                    ++ofs;
+                    tp->type = O71_TT_GREATER_GREATER_EQUAL;
+                }
+                else tp->type = O71_TT_GREATER_GREATER;
+                break;
+            case '=':
+                ++ofs;
+                tp->type = O71_TT_GREATER_EQUAL;
+                break;
+            default:
+                tp->type = O71_TT_GREATER;
+            }
+            break;
+        case '"':
+            M("ofs=%zX", ofs);
+            for (str_n = 0;
+                 ofs < src_n && src_a[ofs] != '"' && src_a[ofs] != '\n'; )
+            {
+                M("ofs=%zX", ofs);
+                if (src_a[ofs++] != '\\') ++str_n;
+                else
+                {
+                    if (ofs == src_n) CE(O71_CE_PARSE_UNFINISHED_STRING);
+                    switch (ch = src_a[ofs++])
+                    {
+                    case '0':
+                    case 'n':
+                    case 'r':
+                    case 'v':
+                    case 'e':
+                    case 't':
+                    case 'a':
+                    case 'b':
+                    case '\\':
+                    case '\'':
+                    case '"':
+                        ++str_n;
+                        continue;
+                    case 'x': // \xAB
+                        if (ofs + 2 > src_n ||
+                            !IS_HEX_DIGIT(src_a[ofs]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 1]))
+                            break;
+                        ofs += 2;
+                        ++str_n;
+                        continue;
+                    case 'c': // \c12
+                        if (ofs + 2 > src_n ||
+                            !IS_HEX_DIGIT(src_a[ofs]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 1]))
+                            break;
+                        ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]));
+                        ofs += 2;
+                        str_n += utf8_codepoint_length(ch);
+                        continue;
+                    case 'u': // \u1234
+                        if (ofs + 4 > src_n ||
+                            !IS_HEX_DIGIT(src_a[ofs]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 1]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 2]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 3]))
+                            break;
+                        ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 12)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]) << 8)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 2]) << 4)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 3]));
+                        ofs += 4;
+                        str_n += utf8_codepoint_length(ch);
+                        continue;
+                    case 'U': // \U123456
+                        if (ofs + 6 > src_n ||
+                            !IS_HEX_DIGIT(src_a[ofs]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 1]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 2]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 3]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 4]) ||
+                            !IS_HEX_DIGIT(src_a[ofs + 5]))
+                            break;
+                        ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 20)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]) << 16)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 2]) << 12)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 3]) << 8)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 4]) << 4)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 5]));
+                        if (ch >= 0x110000) break;
+                        str_n += utf8_codepoint_length(ch);
+                        ofs += 6;
+                        continue;
+                    }
+                    CE(O71_CE_PARSE_BAD_STRING_ESCAPE);
+                }
+            }
+            //M("str_n=%zu", str_n);
+            if (ce) break;
+            if (ofs == src_n || src_a[ofs] == '\n')
+                CE(O71_CE_PARSE_UNFINISHED_STRING);
+            A(src_a[ofs] == '"');
+            tp->str.n = 0;
+            os = redim(allocator_p, (void * *) &tp->str.a, &tp->str.n,
+                       str_n + 1, 1);
+            if (os) return os;
+            for (i = 0, ofs = tp->src_ofs + 1; src_a[ofs] != '"'; )
+            {
+                //M("ofs=%zX ch: %c", ofs, src_a[ofs]);
+                if (src_a[ofs] != '\\') tp->str.a[i++] = src_a[ofs++];
+                else
+                {
+                    ++ofs;
+                    switch (ch = src_a[ofs++])
+                    {
+                    case '0': tp->str.a[i++] = 0; break;
+                    case 'n': tp->str.a[i++] = '\n'; break;
+                    case 'r': tp->str.a[i++] = '\r'; break;
+                    case 'v': tp->str.a[i++] = '\v'; break;
+                    case 'e': tp->str.a[i++] = '\x1B'; break;
+                    case 't': tp->str.a[i++] = '\t'; break;
+                    case 'a': tp->str.a[i++] = '\a'; break;
+                    case 'b': tp->str.a[i++] = '\b'; break;
+                    case '\\': tp->str.a[i++] = '\\'; break;
+                    case '\'': tp->str.a[i++] = '\''; break;
+                    case '"': tp->str.a[i++] = '\"'; break;
+                    case 'x': // \xAB
+                        tp->str.a[i++] = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
+                            | ALPHANUM_TO_DIGIT(src_a[ofs + 1]);
+                        ofs += 2;
+                        break;
+                    case 'c': // \cAB
+                        ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]));
+                        ofs += 2;
+                        i += utf8_codepoint_encode(tp->str.a + i, ch);
+                        break;
+                    case 'u': // \u1234
+                        ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 12)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]) << 8)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 2]) << 4)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 3]));
+                        ofs += 4;
+                        i += utf8_codepoint_encode(tp->str.a + i, ch);
+                        break;
+                    case 'U': // \U123456
+                        ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 20)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]) << 16)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 2]) << 12)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 3]) << 8)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 4]) << 4)
+                            | (ALPHANUM_TO_DIGIT(src_a[ofs + 5]));
+                        ofs += 6;
+                        i += utf8_codepoint_encode(tp->str.a + i, ch);
+                        break;
+                    }
+                }
+            }
+            //M("i=%zu", i);
+            A(i == str_n);
+            A(src_a[ofs] == '"');
+            ++ofs;
+            //A(ofs == tp->src_ofs + tp->src_len);
+            break;
+        default:
+            CE(O71_CE_PARSE_BAD_CHAR);
+        }
+        if (ce) break;
+        tp->src_len = ofs - tp->src_ofs;
+        col += tp->src_len;
+        M("token type=%u: %.*s", tp->type, (int) tp->src_len,
+          src_a + tp->src_ofs);
+    }
+
+#undef CE
+    if (ce)
+    {
+        code_p->ce_code = ce;
+        code_p->ce_row = row;
+        code_p->ce_col = col;
+        code_p->ce_ofs = ofs;
+        return O71_COMPILE_ERROR;
+    }
+
+    os = alloc_token(code_p, &tp);
+    if (os) return os;
+
+    return O71_OK;
+}
+
+/* apply_grammar ************************************************************/
+static o71_status_t apply_grammar
+(
+    o71_code_t * code_p
+)
+{
+    return O71_TODO;
+}
+
+
+
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN
 #include <string.h>
@@ -4432,6 +5371,7 @@ static int reg_obj_field_test (o71_world_t * world_p)
 /* test *********************************************************************/
 static int test ()
 {
+    o71_allocator_t allocator;
     o71_world_t world;
     o71_status_t os;
     int rc = 0, i;
@@ -4444,7 +5384,8 @@ static int test ()
     uint32_t iac_ix, ecx;
     char sb[10];
 
-    os = o71_world_init(&world, mem_realloc, NULL, SIZE_MAX);
+    o71_allocator_init(&allocator, mem_realloc, NULL, SIZE_MAX);
+    os = o71_world_init(&world, &allocator);
     if (os)
     {
         fprintf(stderr, "error: failed initializing scripting instance: %s\n",
@@ -4462,7 +5403,7 @@ static int test ()
             o71_ref_t l;
             c.super_ra = NULL;
             c.super_n = 0;
-            os = redim(&world, (void * *) &c.super_ra, &c.super_n, N,
+            os = redim(world.allocator_p, (void * *) &c.super_ra, &c.super_n, N,
                        sizeof(o71_ref_t));
             if (os) TE("error (line %u): status: %s", __LINE__, N(os));
             for (i = 0; i < c.super_n; ++i)
@@ -4470,7 +5411,8 @@ static int test ()
 
             ra = NULL;
             n = 0;
-            os = redim(&world, (void * *) &ra, &n, N, sizeof(o71_ref_t));
+            os = redim(world.allocator_p, (void * *) &ra, &n, N,
+                       sizeof(o71_ref_t));
             if (os) TE("error (line %u): status: %s", __LINE__, N(os));
             for (i = 0, l = 1; i < n; ++i)
                 ra[i] = l = (31409573 * l + 1) % (2 * N);
@@ -4478,7 +5420,8 @@ static int test ()
             os = class_super_extend(&world, &c, ra, n);
             if (os) TE("error (line %u): status: %s", __LINE__, N(os));
 
-            os = redim(&world, (void * *) &ra, &n, 0, sizeof(o71_ref_t));
+            os = redim(world.allocator_p, (void * *) &ra, &n, 0,
+                       sizeof(o71_ref_t));
             if (os) TE("error (line %u): status: %s", __LINE__, N(os));
 
             for (i = 0; i < N; ++i)
@@ -4495,7 +5438,8 @@ static int test ()
                     TE("error (line %u): did not find %lX", __LINE__, l);
             }
 
-            os = redim(&world, (void * *) &c.super_ra, &c.super_n, 0, sizeof(o71_ref_t));
+            os = redim(world.allocator_p, (void * *) &c.super_ra, &c.super_n, 0,
+                       sizeof(o71_ref_t));
             if (os) TE("error (line %u): status: %s", __LINE__, N(os));
         }
 
@@ -4689,25 +5633,25 @@ static int compile_error_msg (o71_code_t const * code_p, char * buf, size_t len)
     switch (code_p->ce_code)
     {
     case O71_CE_PARSE_BAD_CONTROL_CHAR:
-        snprintf(buf, len, "%s:%u:%u: error: bad control char 0x%02X", 
-                 code_p->src_name, code_p->ce_row, code_p->ce_col, 
+        snprintf(buf, len, "%s:%u:%u: error: bad control char 0x%02X",
+                 code_p->src_name, code_p->ce_row, code_p->ce_col,
                  code_p->src_a[code_p->ce_ofs]);
         break;
     case O71_CE_PARSE_BAD_UTF8_START_BYTE:
-        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 start byte 0x%02X", 
-                 code_p->src_name, code_p->ce_row, code_p->ce_col, 
+        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 start byte 0x%02X",
+                 code_p->src_name, code_p->ce_row, code_p->ce_col,
                  code_p->src_a[code_p->ce_ofs]);
         break;
     case O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR:
-        snprintf(buf, len, "%s:%u:%u: error: overly long encoded UTF8 char", 
+        snprintf(buf, len, "%s:%u:%u: error: overly long encoded UTF8 char",
                  code_p->src_name, code_p->ce_row, code_p->ce_col);
         break;
     case O71_CE_PARSE_TRUNCATED_UTF8_CHAR:
-        snprintf(buf, len, "%s:%u:%u: error: truncated UTF8 char", 
+        snprintf(buf, len, "%s:%u:%u: error: truncated UTF8 char",
                  code_p->src_name, code_p->ce_row, code_p->ce_col);
         break;
     case O71_CE_PARSE_BAD_UTF8_CONTINUATION:
-        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 continuation byte", 
+        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 continuation byte",
                  code_p->src_name, code_p->ce_row, code_p->ce_col);
         break;
     case O71_CE_PARSE_SURROGATE_CODEPOINT:
@@ -4725,21 +5669,23 @@ static int run_script (int ac, char const * const * av)
 {
     FILE * f = NULL;
     char const * src_name;
-    long src_size;
-    o71_code_t code;
     uint8_t * src_a = NULL;
+    long src_size;
     o71_status_t os;
     int rv = ERR_RUN;
+    o71_code_t code;
+    o71_allocator_t allocator;
     char msg[0x800];
 
+    o71_allocator_init(&allocator, mem_realloc, NULL, SIZE_MAX);
 #define E(...) { fprintf(stderr, "error: " __VA_ARGS__); fprintf(stderr, "\n");  break; }
     do
     {
         src_name = av[0];
         f = fopen(src_name, "rb");
         if (!f) E("could not open script file '%s'", src_name);
-        if (fseek(f, 0, SEEK_END) 
-            || (src_size = ftell(f)) < 0 
+        if (fseek(f, 0, SEEK_END)
+            || (src_size = ftell(f)) < 0
             || fseek(f, 0, SEEK_SET))
             E("seek failed in script file '%s'", src_name);
         src_a = malloc(src_size);
@@ -4747,11 +5693,11 @@ static int run_script (int ac, char const * const * av)
             E("failed to allocate %lu bytes for reading script file '%s'",
               src_size, src_name);
         if (fread(src_a, 1, src_size, f) != (size_t) src_size)
-            E("failed to read %lu bytes from script file '%s'", 
+            E("failed to read %lu bytes from script file '%s'",
               src_size, src_name);
         fclose(f);
         f = NULL;
-        os = o71_compile(&code, src_name, src_a, src_size);
+        os = o71_compile(&code, &allocator, src_name, src_a, src_size);
         if (os)
         {
             if (os == O71_COMPILE_ERROR)
@@ -4761,7 +5707,7 @@ static int run_script (int ac, char const * const * av)
                 fputs(msg, stderr);
                 break;
             }
-            else E("failed compiling script file '%s' (%s)", 
+            else E("failed compiling script file '%s' (%s)",
                    src_name, o71_status_name(os));
         }
         fprintf(stderr, "error: running scripts is not implemented!\n");
