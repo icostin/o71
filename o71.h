@@ -683,6 +683,7 @@ enum o71_compile_error_e
 
 struct o71_token_s
 {
+    o71_token_t * next;
     uint32_t src_ofs;
     uint32_t src_len;
     uint32_t src_row;
@@ -704,11 +705,10 @@ struct o71_code_s
 {
     char const * src_name;
     uint8_t const * src_a;
-    o71_token_t * token_a;
+    o71_token_t * token_list;
+    o71_token_t * * token_tail;
     o71_allocator_t * allocator_p;
     size_t src_n;
-    size_t token_n;
-    size_t token_m;
     unsigned int ce_code;
     uint32_t ce_row, ce_col;
     size_t ce_ofs;

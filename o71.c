@@ -36,6 +36,9 @@
     os = redim((_allocator_p), (void * *) &(_array), &(_length), 0, \
                sizeof((_array)[0])); AOS(os)
 
+#define ALLOC(_os, _allocator_p, _ptr) do { size_t _n = 0; \
+    (_os) = redim((_allocator_p), (void * *) &(_ptr), &_n, 1, sizeof(*(_ptr))); \
+} while (0)
 
 #if O71_CHECKED
 #define A(_cond) \
@@ -2713,9 +2716,8 @@ O71_API o71_status_t o71_compile
     code_p->src_name = src_name;
     code_p->src_a = src_a;
     code_p->src_n = src_n;
-    code_p->token_a = NULL;
-    code_p->token_n = 0;
-    code_p->token_m = 0;
+    code_p->token_list = NULL;
+    code_p->token_tail = &code_p->token_list;
 
     os = tokenize_source(code_p);
     if (os) return os;
@@ -2734,12 +2736,13 @@ O71_API o71_status_t o71_code_free
 {
     o71_status_t os;
     size_t i;
-    for (i = 0; i < code_p->token_n; ++i)
+    o71_token_t * t, * n;
+    for (t = code_p->token_list; t; t = n)
     {
-        os = free_token(code_p, code_p->token_a + i);
+        n = t->next;
+        os = free_token(code_p, t);
         AOS(os);
     }
-    FREE_ARRAY(code_p->allocator_p, code_p->token_a, code_p->token_n);
     return O71_OK;
 }
 
@@ -4730,14 +4733,14 @@ static o71_status_t alloc_token
 )
 {
     o71_status_t os;
-    os = extend_array(code_p->allocator_p, (void * *) token_pp,
-                      (void * *) &code_p->token_a, &code_p->token_m,
-                      &code_p->token_n, 1, sizeof(o71_token_t));
+    ALLOC(os, code_p->allocator_p, *token_pp);
     if (os)
     {
         M("failed extending token array: %s", N(os));
         return os;
     }
+    *code_p->token_tail = *token_pp;
+    code_p->token_tail = &(*token_pp)->next;
 
     return O71_OK;
 }
