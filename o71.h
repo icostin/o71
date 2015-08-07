@@ -107,6 +107,7 @@ enum o71_status_e
     O71_BAD_INTERN_STRING_REF,
 
     O71_COMPILE_ERROR,
+    O71_NO_MATCH,
 
     O71_FATAL,
     O71_MEM_CORRUPTED = O71_FATAL,
@@ -584,7 +585,6 @@ enum o71_token_type_e
     O71_TT_COMMA,
     O71_TT_SEMICOLON,
     O71_TT_COLON,
-
     O71_TT_PLUS_PLUS,
     O71_TT_MINUS_MINUS,
     O71_TT_STAR_STAR,
@@ -609,7 +609,6 @@ enum o71_token_type_e
     O71_TT_STAR_STAR_EQUAL,
     O71_TT_AMPERSAND_AMPERSAND_EQUAL,
     O71_TT_PIPE_PIPE_EQUAL,
-
     O71_TT_RETURN,
     O71_TT_BREAK,
     O71_TT_GOTO,
@@ -620,20 +619,18 @@ enum o71_token_type_e
     O71_TT_FOR,
     O71_TT_SWITCH,
     O71_TT_CASE,
-
     O71_TT_INTEGER,
     O71_TT_STRING,
     O71_TT_IDENTIFIER,
-
-    O71_TT_SOURCE,
+    O71_TT__COMPLEX,
+    O71_TT_SOURCE = O71_TT__COMPLEX,
     O71_TT_STMT_SEQ,
     O71_TT_STMT,
+    O71_TT_DECL_START,
     O71_TT_BLOCK_STMT,
-
     O71_TT_IF_STMT_START,
     O71_TT_DO_STMT_START,
     O71_TT_WHILE_COND,
-
     O71_TT_UNARY_OPERATOR,
     O71_TT_EXP_OPERATOR,
     O71_TT_MUL_OPERATOR,
@@ -641,7 +638,6 @@ enum o71_token_type_e
     O71_TT_CMP_OPERATOR,
     O71_TT_EQU_OPERATOR,
     O71_TT_ASG_OPERATOR,
-
     O71_TT_VAR_INIT,
     O71_TT_VAR_INIT_LIST,
     O71_TT_ARG_DECL,
@@ -663,6 +659,7 @@ enum o71_token_type_e
     O71_TT_LOGIC_XOR_EXPR,
     O71_TT_LOGIC_OR_EXPR,
     O71_TT_COND_EXPR,
+    O71_TT__COUNT
 };
 
 enum o71_compile_error_e
@@ -697,6 +694,11 @@ struct o71_token_s
             size_t n;
         } str;
         uint64_t num;
+        struct
+        {
+            o71_token_t * * pa;
+            size_t n;
+        } subtokens;
     };
 
 };
@@ -707,6 +709,7 @@ struct o71_code_s
     uint8_t const * src_a;
     o71_token_t * token_list;
     o71_token_t * * token_tail;
+    o71_token_t * src_token_p; // token of type source with all script parsed
     o71_allocator_t * allocator_p;
     size_t src_n;
     unsigned int ce_code;
