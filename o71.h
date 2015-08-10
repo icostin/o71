@@ -202,6 +202,9 @@ typedef struct o71_script_function_s o71_script_function_t;
 typedef enum o71_status_e o71_status_t;
 typedef struct o71_string_s o71_string_t;
 typedef struct o71_token_s o71_token_t;
+typedef struct o71_str_token_s o71_str_token_t;
+typedef struct o71_id_token_s o71_id_token_t;
+typedef struct o71_int_token_s o71_int_token_t;
 typedef struct o71_world_s o71_world_t;
 
 /* o71_ref_t ****************************************************************/
@@ -686,22 +689,28 @@ struct o71_token_s
     uint32_t src_row;
     uint32_t src_col;
     uint8_t type;
-    union
-    {
-        struct
-        {
-            uint8_t * a;
-            size_t n;
-        } str;
-        uint64_t num;
-        struct
-        {
-            o71_token_t * * pa;
-            size_t n;
-        } subtokens;
-    };
-
 };
+
+struct o71_id_token_s
+{
+    o71_token_t base;
+    uint8_t const * a; // points into the original source
+    size_t n;
+};
+
+struct o71_str_token_s
+{
+    o71_token_t base;
+    uint8_t * a;
+    size_t n;
+};
+
+struct o71_int_token_s
+{
+    o71_token_t base;
+    uint64_t val;
+};
+
 
 struct o71_code_s
 {

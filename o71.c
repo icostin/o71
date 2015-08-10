@@ -8,10 +8,15 @@
 #include <stdio.h>
 #include <inttypes.h>
 #include <stdint.h>
+#define P(...) (printf(__VA_ARGS__))
+#define MP(...) do { printf("%s():%u: ", __FUNCTION__, __LINE__); \
+    printf(__VA_ARGS__); } while (0)
 #define M(...) do { printf("%s():%u: ", __FUNCTION__, __LINE__); \
     printf(__VA_ARGS__); printf("\n"); } while (0)
 #else
 #define M(...) ((void) 0)
+#define MP(...) ((void) 0)
+#define P(...) ((void) 0)
 #endif
 
 #if O71_DEBUG >= 2
@@ -38,6 +43,11 @@
 
 #define ALLOC(_os, _allocator_p, _ptr) do { size_t _n = 0; \
     (_os) = redim((_allocator_p), (void * *) &(_ptr), &_n, 1, sizeof(*(_ptr))); \
+} while (0)
+
+#define FREE(_allocator_p, _ptr) do { size_t _n = 1; o71_status_t _os; \
+    _os = redim((_allocator_p), (void * *) &(_ptr), &_n, 0, sizeof(*(_ptr))); \
+    AOS(_os); \
 } while (0)
 
 #if O71_CHECKED
@@ -755,16 +765,6 @@ O71_INLINE o71_status_t set_var
     o71_ref_t src_r
 );
 
-/* alloc_token */
-/**
- *  Allocates room for 1 token in the given code structure.
- */
-static o71_status_t alloc_token
-(
-    o71_code_t * code_p,
-    o71_token_t * * token_pp
-);
-
 /*  free_token  */
 /**
  *  Frees one token
@@ -788,43 +788,7 @@ static o71_status_t tokenize_source
 static o71_status_t match_stmt
 (
     o71_code_t * code_p,
-    o71_token_p * in_p
-);
-
-/*  apply_grammar  */
-/**
- *  Produces a token of requested type from a list of input tokens.
- */
-static o71_status_t apply_grammar
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    unsigned int type,
-    o71_token_t * * out_pp
-);
-
-/*  match_token  */
-/**
- *  Applies repeatedly rules producing requested type over the input stream.
- */
-static o71_status_t match_token
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    unsigned int type,
-    o71_token_t * * out_pp
-);
-
-/*  match_rule  */
-/**
- *  Applies a rule and produces a new token.
- */
-static o71_status_t match_rule
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    grammar_rule_t const * rule_p,
-    o71_token_t * * out_pp
+    o71_token_t * in_p
 );
 
 #if O71_DEBUG
@@ -868,8 +832,20 @@ static void kvbag_rbtree_dump
     o71_kvnode_t * kvnode_p,
     unsigned int depth
 );
+
+/*  dump_token_list  */
+/**
+ *  Prints a list token types
+ */
+static void dump_token_list
+(
+    o71_token_t * token_p,
+    size_t n
+);
+
 #else
 #define kvbag_dump(_w, _k) ((void) 0)
+#define dump_token_list(_tp, _n) ((void) 0)
 #endif
 
 static o71_status_t rule_nop (o71_code_t * code_p);
@@ -985,281 +961,6 @@ static char const * ttname_a[O71_TT__COUNT] =
     "logic_xor_expr",
     "logic_or_expr",
     "cond_expr"
-};
-
-static grammar_rule_t grammar[] =
-{
-    /* source := END */
-    R(rule_nop, O71_TT_SOURCE, O71_TT_END),
-
-    /* source := stmt_seq END */
-    R(rule_nop, O71_TT_SOURCE, O71_TT_STMT_SEQ, O71_TT_END),
-
-    /* stmt_seq := stmt_seq stmt */
-    R(rule_nop, O71_TT_STMT_SEQ, O71_TT_STMT_SEQ, O71_TT_STMT),
-
-    /* stmt_seq := stmt */
-    R(rule_nop, O71_TT_STMT_SEQ, O71_TT_STMT),
-
-    R(rule_nop, O71_TT_DECL_START, O71_TT_EXPR, O71_TT_IDENTIFIER),
-
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_DECL_START, O71_TT_PAREN_OPEN, O71_TT_ARG_DECL_LIST,
-      O71_TT_PAREN_CLOSE, O71_TT_BLOCK_STMT),
-
-    /* stmt := block_stmt */
-    R(rule_nop, O71_TT_STMT, O71_TT_BLOCK_STMT),
-
-    // /* stmt := expr identifier "(" arg_decl_list ")" block_stmt */
-    // R(rule_nop, O71_TT_STMT,
-    //   O71_TT_EXPR, O71_TT_IDENTIFIER, O71_TT_PAREN_OPEN, O71_TT_ARG_DECL_LIST,
-    //   O71_TT_PAREN_CLOSE, O71_TT_BLOCK_STMT),
-
-    /* stmt := expr var_init_list ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_EXPR, O71_TT_VAR_INIT_LIST, O71_TT_SEMICOLON),
-
-    /* stmt := expr ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_EXPR, O71_TT_SEMICOLON),
-
-    /* stmt := "return" ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_RETURN, O71_TT_SEMICOLON),
-
-    /* stmt := "return" expr ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_RETURN, O71_TT_EXPR, O71_TT_SEMICOLON),
-
-    /* stmt := if_stmt_start ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_IF_STMT_START, O71_TT_SEMICOLON),
-
-    /* stmt := if_stmt_start ";" "else" stmt */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_IF_STMT_START, O71_TT_SEMICOLON, O71_TT_ELSE, O71_TT_STMT),
-
-    /* stmt := "switch" "(" expr ")" block_stmt */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_SWITCH, O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE,
-      O71_TT_BLOCK_STMT),
-
-    /* stmt := do_stmt_start ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_DO_STMT_START, O71_TT_SEMICOLON),
-
-    /* stmt := do_stmt_start while_cond ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_DO_STMT_START, O71_TT_WHILE_COND, O71_TT_SEMICOLON),
-
-    /* stmt := "for" "(" expr_list ";" expr ";" expr_list ")" stmt */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_FOR, O71_TT_PAREN_OPEN, O71_TT_EXPR_LIST, O71_TT_SEMICOLON,
-      O71_TT_EXPR, O71_TT_SEMICOLON, O71_TT_EXPR_LIST, O71_TT_PAREN_CLOSE,
-      O71_TT_STMT),
-
-    /* stmt := "break" ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_BREAK, O71_TT_SEMICOLON),
-
-    /* stmt := "goto" identifier ";" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_GOTO, O71_TT_IDENTIFIER, O71_TT_SEMICOLON),
-
-    /* stmt := identifier ":" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_IDENTIFIER, O71_TT_COLON),
-
-    /* stmt := "case" expr ":" */
-    R(rule_nop, O71_TT_STMT,
-      O71_TT_CASE, O71_TT_EXPR, O71_TT_COLON),
-
-    /* if_stmt_start := "if" "(" expr ")" stmt */
-    R(rule_nop, O71_TT_IF_STMT_START,
-      O71_TT_IF, O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE, O71_TT_STMT),
-
-    /* do_stmt_start := "do" block_stmt */
-    R(rule_nop, O71_TT_DO_STMT_START,
-      O71_TT_DO, O71_TT_BLOCK_STMT),
-
-    /* while_cond := "while" "(" expr ")" */
-    R(rule_nop, O71_TT_WHILE_COND,
-      O71_TT_WHILE, O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE),
-
-    /* arg_decl_list := arg_decl */
-    R(rule_nop, O71_TT_ARG_DECL_LIST, O71_TT_ARG_DECL),
-    R(rule_nop, O71_TT_ARG_DECL_LIST,
-      O71_TT_ARG_DECL_LIST, O71_TT_COMMA, O71_TT_ARG_DECL),
-
-    R(rule_nop, O71_TT_ARG_DECL,
-      O71_TT_EXPR, O71_TT_IDENTIFIER, O71_TT_EQUAL, O71_TT_EXPR),
-    R(rule_nop, O71_TT_ARG_DECL,
-      O71_TT_EXPR, O71_TT_IDENTIFIER),
-
-    /* var_init_list := var_init */
-    R(rule_nop, O71_TT_VAR_INIT_LIST, O71_TT_VAR_INIT),
-
-    /* var_init_list := var_init_list "," var_init */
-    R(rule_nop, O71_TT_VAR_INIT_LIST,
-      O71_TT_VAR_INIT_LIST, O71_TT_COMMA, O71_TT_VAR_INIT),
-
-    /* var_init := identifier "=" expr */
-    R(rule_nop, O71_TT_VAR_INIT,
-      O71_TT_IDENTIFIER, O71_TT_EQUAL, O71_TT_EXPR),
-
-    /* var_init := identifier */
-    R(rule_nop, O71_TT_VAR_INIT,
-      O71_TT_IDENTIFIER),
-
-    /* expr_list := expr */
-    R(rule_nop, O71_TT_EXPR_LIST,
-      O71_TT_EXPR),
-
-    /* expr_list := expr_list "," expr */
-    R(rule_nop, O71_TT_EXPR_LIST,
-      O71_TT_EXPR_LIST, O71_TT_COMMA, O71_TT_EXPR),
-
-    /* atom_expr := integer */
-    R(rule_nop, O71_TT_ATOM_EXPR,
-      O71_TT_INTEGER),
-    /* atom_expr := string */
-    R(rule_nop, O71_TT_ATOM_EXPR,
-      O71_TT_STRING),
-    /* atom_expr := identifier */
-    R(rule_nop, O71_TT_ATOM_EXPR,
-      O71_TT_IDENTIFIER),
-    /* atom_expr := "(" expr ")" */
-    R(rule_nop, O71_TT_ATOM_EXPR,
-      O71_TT_PAREN_OPEN, O71_TT_EXPR, O71_TT_PAREN_CLOSE),
-
-    /* postfix_expr := atom_expr */
-    R(rule_nop, O71_TT_POSTFIX_EXPR,
-      O71_TT_ATOM_EXPR),
-    /* postfix_expr := postfix_expr "[" expr "]" */
-    R(rule_nop, O71_TT_POSTFIX_EXPR,
-      O71_TT_POSTFIX_EXPR, O71_TT_SQUARE_BRACKET_OPEN, O71_TT_EXPR,
-      O71_TT_SQUARE_BRACKET_CLOSE),
-    /* postfix_expr := postfix_expr "(" expr_list ")" */
-    R(rule_nop, O71_TT_POSTFIX_EXPR,
-      O71_TT_POSTFIX_EXPR, O71_TT_PAREN_OPEN, O71_TT_EXPR_LIST, O71_TT_PAREN_CLOSE),
-    /* postfix_expr := postfix_expr "." identifier */
-    R(rule_nop, O71_TT_POSTFIX_EXPR,
-      O71_TT_POSTFIX_EXPR, O71_TT_DOT, O71_TT_IDENTIFIER),
-
-    /* unary_operator := "+" | "-" | "!" | "~" */
-    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_PLUS),
-    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_PLUS_PLUS),
-    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_MINUS),
-    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_MINUS_MINUS),
-    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_EXCLAMATION),
-    R(rule_nop, O71_TT_UNARY_OPERATOR, O71_TT_TILDE),
-    /* prefix_expr := postfix_expr */
-    R(rule_nop, O71_TT_PREFIX_EXPR, O71_TT_POSTFIX_EXPR),
-    /* prefix_expr := unary_operator unary_expr */
-    R(rule_nop, O71_TT_PREFIX_EXPR, O71_TT_UNARY_OPERATOR, O71_TT_PREFIX_EXPR),
-
-    /* exp_operator := "<<" | ">>" | "**" */
-    R(rule_nop, O71_TT_EXP_OPERATOR, O71_TT_LESS_LESS),
-    R(rule_nop, O71_TT_EXP_OPERATOR, O71_TT_GREATER_GREATER),
-    R(rule_nop, O71_TT_EXP_OPERATOR, O71_TT_STAR_STAR),
-    /* exp_expr := exp_expr exp_operator prefix_expr */
-    R(rule_nop, O71_TT_EXP_EXPR,
-      O71_TT_EXP_EXPR, O71_TT_EXP_OPERATOR, O71_TT_PREFIX_EXPR),
-    /* exp_expr := prefix_expr */
-    R(rule_nop, O71_TT_EXP_EXPR, O71_TT_PREFIX_EXPR),
-
-    /* mul_operator := "*" | "/" | "%" */
-    R(rule_nop, O71_TT_MUL_OPERATOR, O71_TT_STAR),
-    R(rule_nop, O71_TT_MUL_OPERATOR, O71_TT_SLASH),
-    R(rule_nop, O71_TT_MUL_OPERATOR, O71_TT_PERCENT),
-    /* mul_expr := mul_expr mul_operator exp_expr */
-    R(rule_nop, O71_TT_MUL_EXPR,
-      O71_TT_MUL_EXPR, O71_TT_MUL_OPERATOR, O71_TT_EXP_EXPR),
-    /* mul_expr := or_expr */
-    R(rule_nop, O71_TT_MUL_EXPR, O71_TT_EXP_EXPR),
-
-    /* and_expr := mul_expr */
-    R(rule_nop, O71_TT_AND_EXPR, O71_TT_MUL_EXPR),
-    /* and_expr := and_expr "&" mul_expr */
-    R(rule_nop, O71_TT_AND_EXPR, O71_TT_AND_EXPR, O71_TT_AMPERSAND, O71_TT_MUL_EXPR),
-
-    /* xor_expr := and_expr */
-    R(rule_nop, O71_TT_XOR_EXPR, O71_TT_AND_EXPR),
-    /* xor_expr := xor_expr "^" and_expr */
-    R(rule_nop, O71_TT_XOR_EXPR, O71_TT_XOR_EXPR, O71_TT_CARET, O71_TT_AND_EXPR),
-
-    /* or_expr := xor_expr */
-    R(rule_nop, O71_TT_OR_EXPR, O71_TT_XOR_EXPR),
-    /* or_expr := or_expr "|" xor_expr */
-    R(rule_nop, O71_TT_OR_EXPR, O71_TT_OR_EXPR, O71_TT_PIPE, O71_TT_XOR_EXPR),
-
-    /* add_operator := "+" | "-" */
-    R(rule_nop, O71_TT_ADD_OPERATOR, O71_TT_PLUS),
-    R(rule_nop, O71_TT_ADD_OPERATOR, O71_TT_MINUS),
-    /* add_expr := mul_expr */
-    R(rule_nop, O71_TT_ADD_EXPR, O71_TT_MUL_EXPR),
-    /* add_expr := add_expr add_operator mul_expr */
-    R(rule_nop, O71_TT_ADD_EXPR,
-      O71_TT_ADD_EXPR, O71_TT_ADD_OPERATOR, O71_TT_MUL_EXPR),
-
-    /* cmp_operator := "<" | "<=" | ">" | ">=" */
-    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_LESS),
-    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_LESS_EQUAL),
-    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_GREATER),
-    R(rule_nop, O71_TT_CMP_OPERATOR, O71_TT_GREATER_EQUAL),
-    /* cmp_expr := cmp_expr cmp_operator add_expr */
-    R(rule_nop, O71_TT_CMP_EXPR,
-      O71_TT_CMP_EXPR, O71_TT_CMP_OPERATOR, O71_TT_ADD_EXPR),
-    /* cmp_expr := add_operator */
-    R(rule_nop, O71_TT_CMP_EXPR, O71_TT_ADD_EXPR),
-
-    /* equ_operator := "==" | "!=" */
-    R(rule_nop, O71_TT_EQU_OPERATOR, O71_TT_EQUAL_EQUAL),
-    R(rule_nop, O71_TT_EQU_OPERATOR, O71_TT_EXCLAMATION_EQUAL),
-    /* equ_expr := equ_expr equ_operator cmp_expr */
-    R(rule_nop, O71_TT_EQU_EXPR,
-      O71_TT_EQU_EXPR, O71_TT_EQU_OPERATOR, O71_TT_CMP_EXPR),
-    /* equ_expr := cmp_expr */
-    R(rule_nop, O71_TT_EQU_EXPR, O71_TT_CMP_EXPR),
-
-    /* logic_and_expr := equ_expr */
-    R(rule_nop, O71_TT_LOGIC_AND_EXPR, O71_TT_EQU_EXPR),
-    /* logic_and_expr := logic_and_expr "&&" equ_expr */
-    R(rule_nop, O71_TT_LOGIC_AND_EXPR, O71_TT_AMPERSAND_AMPERSAND, O71_TT_EQU_EXPR),
-
-    /* logic_or_expr := logic_and_expr */
-    R(rule_nop, O71_TT_LOGIC_OR_EXPR, O71_TT_LOGIC_AND_EXPR),
-    /* logic_or_expr := logic_or_expr "||" logic_and_expr */
-    R(rule_nop, O71_TT_LOGIC_OR_EXPR,
-      O71_TT_LOGIC_OR_EXPR, O71_TT_PIPE_PIPE, O71_TT_LOGIC_AND_EXPR),
-
-    /* cond_expr := logic_or_expr "?" expr ":" cond_expr */
-    R(rule_nop, O71_TT_COND_EXPR,
-      O71_TT_LOGIC_OR_EXPR, O71_TT_QUESTION, O71_TT_EXPR, O71_TT_EXPR, O71_TT_COLON,
-      O71_TT_COND_EXPR),
-    /* cond_expr := logic_or_expr */
-    R(rule_nop, O71_TT_COND_EXPR, O71_TT_LOGIC_OR_EXPR),
-
-    /* asg_operator := "=" | "+=" | "-=" | "*=" | "/=" | "%=" | "&=" | "|=" " | "^=" | "<<=" | ">>=" | "**=" | "&&=" | "||=" */
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PLUS_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_MINUS_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_STAR_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_SLASH_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PERCENT_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_AMPERSAND_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PIPE_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_CARET_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_LESS_LESS_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_GREATER_GREATER_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_STAR_STAR_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_AMPERSAND_AMPERSAND_EQUAL),
-    R(rule_nop, O71_TT_ASG_OPERATOR, O71_TT_PIPE_PIPE_EQUAL),
-    /* expr := cond_expr */
-    R(rule_nop, O71_TT_EXPR, O71_TT_COND_EXPR),
-    /* expr := postfix_expr asg_operator cond_expr */
-    R(rule_nop, O71_TT_EXPR,
-      O71_TT_POSTFIX_EXPR, O71_TT_ASG_OPERATOR, O71_TT_COND_EXPR),
 };
 
 /* utf8_codepoint_length ****************************************************/
@@ -2864,37 +2565,37 @@ O71_API o71_status_t o71_compile
 )
 {
     o71_status_t os;
+    o71_token_t * crt_token_p;
 
     code_p->allocator_p = allocator_p;
     code_p->src_name = src_name;
     code_p->src_a = src_a;
     code_p->src_n = src_n;
     code_p->token_list = NULL;
-    /* token_tail is used to automatically chain tokens allocated;
-     * this is useful during tokenizing phase */
     code_p->token_tail = &code_p->token_list;
 
     os = tokenize_source(code_p);
     if (os) return os;
 
     code_p->ce_ofs = 0;
-    /* disable automatic chaining when allocating new tokens */
-    code_p->token_tail = NULL;
-    os = match_token(code_p, code_p->token_list, O71_TT_SOURCE, 
-                       &code_p->src_token_p);
-    //os = apply_grammar(code_p, code_p->token_list, O71_TT_SOURCE, 
-    //                   &code_p->src_token_p);
-    if (os) return os;
-    
+
+    for (crt_token_p = code_p->token_list; crt_token_p->type != O71_TT_END;)
+    {
+        os = match_stmt(code_p, crt_token_p);
+        if (os) return os;
+    }
+
     return O71_OK;
 }
 
+/* match_stmt ***************************************************************/
 static o71_status_t match_stmt
 (
     o71_code_t * code_p,
-    o71_token_p * in_p
+    o71_token_t * in_p
 )
 {
+    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
     return O71_TODO;
 }
 
@@ -4896,30 +4597,6 @@ static o71_status_t set_reg_obj_field
     return o71_reg_obj_set_field(flow_p->world_p, obj_r, field_r, value_r);
 }
 
-/* alloc_token **************************************************************/
-static o71_status_t alloc_token
-(
-    o71_code_t * code_p,
-    o71_token_t * * token_pp
-)
-{
-    o71_status_t os;
-    ALLOC(os, code_p->allocator_p, *token_pp);
-    if (os)
-    {
-        M("failed extending token array: %s", N(os));
-        return os;
-    }
-    if (code_p->token_tail)
-    {
-        *code_p->token_tail = *token_pp;
-        code_p->token_tail = &(*token_pp)->next;
-    }
-    M("alloc_token: %p", *token_pp);
-
-    return O71_OK;
-}
-
 /* free_token ***************************************************************/
 static o71_status_t free_token
 (
@@ -4930,10 +4607,15 @@ static o71_status_t free_token
 {
     o71_status_t os;
     unsigned int i;
+    o71_str_token_t * str_token_p;
     if (token_p->type < min_tt) return O71_OK;
     M("free_token %p(type=%s)", token_p, ttname_a[token_p->type]);
     switch (token_p->type)
     {
+    case O71_TT_STRING:
+        str_token_p = (o71_str_token_t *) token_p;
+        FREE_ARRAY(code_p->allocator_p, str_token_p->a, str_token_p->n);
+        return O71_OK;
     case O71_TT_END:
     case O71_TT_TILDE:
     case O71_TT_EXCLAMATION:
@@ -4995,15 +4677,8 @@ static o71_status_t free_token
     case O71_TT_CASE:
     case O71_TT_INTEGER:
     case O71_TT_IDENTIFIER:
-        break;
-    case O71_TT_STRING:
-        FREE_ARRAY(code_p->allocator_p, token_p->str.a, token_p->str.n);
-        return O71_OK;
     default:
-        for (i = 0; i < token_p->subtokens.n; ++i)
-            free_token(code_p, token_p->subtokens.pa[i], min_tt);
-        FREE_ARRAY(code_p->allocator_p, token_p->subtokens.pa, 
-                   token_p->subtokens.n);
+        break;
     }
     return O71_OK;
 }
@@ -5025,12 +4700,13 @@ static o71_status_t tokenize_source
     uint32_t row, col, ch, nch;
     int chlen, ce, digit;
     o71_status_t os;
-    o71_token_t * tp;
     unsigned int base;
     size_t str_n, i;
     o71_allocator_t * allocator_p;
     uint8_t const * src_a;
-    size_t src_n;
+    size_t src_n, src_ofs;
+    o71_token_t * token_p;
+    unsigned int type;
 
     allocator_p = code_p->allocator_p;
     src_a = code_p->src_a;
@@ -5130,23 +4806,22 @@ static o71_status_t tokenize_source
             continue;
         }
 
-        os = alloc_token(code_p, &tp);
-        if (os) return os;
-        tp->type = O71_TT_END;
-        tp->src_ofs = ofs;
-        tp->src_row = row;
-        tp->src_col = col;
+        src_ofs = ofs;
         if (IS_ID_START_CHAR(ch))
         {
+            o71_id_token_t * id_token_p;
             for (++ofs; ofs < src_n && IS_ID_BODY_CHAR(src_a[ofs]); ++ofs);
-            tp->src_len = ofs - tp->src_ofs;
-            tp->type = O71_TT_IDENTIFIER;
-            col += ofs - tp->src_ofs;
-            M("identifier: '%.*s'", (int) tp->src_len, &src_a[tp->src_ofs]);
-            continue;
+            ALLOC(os, code_p->allocator_p, id_token_p);
+            if (os) return os;
+            token_p = &id_token_p->base;
+            token_p->type = O71_TT_IDENTIFIER;
+            id_token_p->a = src_a + src_ofs;
+            id_token_p->n = ofs - src_ofs;
         }
-        if (IS_DIGIT(ch))
+        else if (IS_DIGIT(ch))
         {
+            o71_int_token_t * int_token_p;
+            uint64_t num;
             base = 10;
             if (ch == '0' && ofs + 1 < src_n)
             {
@@ -5159,7 +4834,7 @@ static o71_status_t tokenize_source
                 case 'x': ++ofs; base = 16; break;
                 }
             }
-            tp->num = 0;
+            num = 0;
             for (; ofs < src_n &&
                  (src_a[ofs] == '_' || IS_DIGIT(src_a[ofs]) ||
                   IS_ALPHA(src_a[ofs]));
@@ -5168,156 +4843,24 @@ static o71_status_t tokenize_source
                 if (src_a[ofs] == '_') continue;
                 digit = ALPHANUM_TO_DIGIT(src_a[ofs]);
                 if (digit >= (int) base) CE(O71_CE_PARSE_BAD_NUMBER);
-                tp->num = tp->num * base + digit;
+                num = num * base + digit;
             }
             if (ce) break;
-            tp->src_len = ofs - tp->src_ofs;
-            tp->type = O71_TT_INTEGER;
-            col += ofs - tp->src_ofs;
-            M("integer: %"PRIu64, tp->num);
-            continue;
+            ALLOC(os, code_p->allocator_p, int_token_p);
+            if (os) return os;
+            token_p = &int_token_p->base;
+            token_p->type = O71_TT_INTEGER;
+            int_token_p->val = num;
         }
-        ++ofs;
-        nch = ofs < src_n ? src_a[ofs] : 0;
-        switch (ch)
+        else if (ch == '"')
         {
-        case '~': tp->type = O71_TT_TILDE; break;
-        case '?': tp->type = O71_TT_QUESTION; break;
-        case '(': tp->type = O71_TT_PAREN_OPEN; break;
-        case ')': tp->type = O71_TT_PAREN_CLOSE; break;
-        case '[': tp->type = O71_TT_SQUARE_BRACKET_OPEN; break;
-        case ']': tp->type = O71_TT_SQUARE_BRACKET_CLOSE; break;
-        case '{': tp->type = O71_TT_CURLY_BRACKET_OPEN; break;
-        case '}': tp->type = O71_TT_CURLY_BRACKET_CLOSE; break;
-        case '.': tp->type = O71_TT_DOT; break;
-        case ',': tp->type = O71_TT_COMMA; break;
-        case ';': tp->type = O71_TT_SEMICOLON; break;
-        case ':': tp->type = O71_TT_COLON; break;
-        case '!':
-            if (nch == '=') { ++ofs; tp->type = O71_TT_EXCLAMATION_EQUAL; }
-            else tp->type = O71_TT_EXCLAMATION;
-            break;
-        case '%':
-            if (nch == '=') { ++ofs; tp->type = O71_TT_PERCENT_EQUAL; }
-            else tp->type = O71_TT_PERCENT;
-            break;
-        case '^':
-            if (nch == '=') { ++ofs; tp->type = O71_TT_CARET_EQUAL; }
-            else tp->type = O71_TT_CARET;
-            break;
-        case '&':
-            switch (nch)
-            {
-            case '&':
-                if (++ofs < src_n && src_a[ofs] == '=')
-                {
-                    ++ofs;
-                    tp->type = O71_TT_AMPERSAND_AMPERSAND_EQUAL;
-                    break;
-                }
-                else tp->type = O71_TT_AMPERSAND_AMPERSAND;
-                break;
-            case '=': ++ofs; tp->type = O71_TT_AMPERSAND_EQUAL; break;
-            }
-            break;
-        case '|':
-            switch (nch)
-            {
-            case '&':
-                if (++ofs < src_n && src_a[ofs] == '=')
-                {
-                    ++ofs;
-                    tp->type = O71_TT_PIPE_PIPE_EQUAL;
-                    break;
-                }
-                else tp->type = O71_TT_PIPE_PIPE;
-                break;
-            case '=': ++ofs; tp->type = O71_TT_PIPE_EQUAL; break;
-            }
-            break;
-        case '+':
-            switch (nch)
-            {
-            case '+': ++ofs; tp->type = O71_TT_PLUS_PLUS; break;
-            case '=': ++ofs; tp->type = O71_TT_PLUS_EQUAL; break;
-            default: tp->type = O71_TT_PLUS;
-            }
-            break;
-        case '-':
-            switch (nch)
-            {
-            case '-': ++ofs; tp->type = O71_TT_MINUS_MINUS; break;
-            case '=': ++ofs; tp->type = O71_TT_MINUS_EQUAL; break;
-            default: tp->type = O71_TT_MINUS;
-            }
-            break;
-        case '*':
-            switch (nch)
-            {
-            case '*':
-                if (++ofs < src_n && src_a[ofs] == '=')
-                {
-                    ++ofs;
-                    tp->type = O71_TT_STAR_STAR_EQUAL;
-                }
-                else tp->type = O71_TT_STAR_STAR;
-                break;
-            case '=': ++ofs; tp->type = O71_TT_STAR_EQUAL; break;
-            default: tp->type = O71_TT_STAR;
-            }
-            break;
-        case '/':
-            if (nch == '=') { ++ofs; tp->type = O71_TT_SLASH_EQUAL; }
-            else tp->type = O71_TT_SLASH;
-            break;
-        case '=':
-            if (nch == '=') { ++ofs; tp->type = O71_TT_EQUAL_EQUAL; }
-            else tp->type = O71_TT_EQUAL;
-            break;
-        case '<':
-            switch (nch)
-            {
-            case '<':
-                if (++ofs < src_n && src_a[ofs] == '=')
-                {
-                    ++ofs;
-                    tp->type = O71_TT_LESS_LESS_EQUAL;
-                }
-                else tp->type = O71_TT_LESS_LESS;
-                break;
-            case '=':
-                ++ofs;
-                tp->type = O71_TT_LESS_EQUAL;
-                break;
-            default:
-                tp->type = O71_TT_LESS;
-            }
-            break;
-        case '>':
-            switch (nch)
-            {
-            case '>':
-                if (++ofs < src_n && src_a[ofs] == '=')
-                {
-                    ++ofs;
-                    tp->type = O71_TT_GREATER_GREATER_EQUAL;
-                }
-                else tp->type = O71_TT_GREATER_GREATER;
-                break;
-            case '=':
-                ++ofs;
-                tp->type = O71_TT_GREATER_EQUAL;
-                break;
-            default:
-                tp->type = O71_TT_GREATER;
-            }
-            break;
-        case '"':
-            M("ofs=%zX", ofs);
+            o71_str_token_t * str_token_p;
+            //M("ofs=%zX", ofs);
+            ++ofs;
             for (str_n = 0;
                  ofs < src_n && src_a[ofs] != '"' && src_a[ofs] != '\n'; )
             {
-                M("ofs=%zX", ofs);
+                //M("ofs=%zX", ofs);
                 if (src_a[ofs++] != '\\') ++str_n;
                 else
                 {
@@ -5397,32 +4940,41 @@ static o71_status_t tokenize_source
             if (ofs == src_n || src_a[ofs] == '\n')
                 CE(O71_CE_PARSE_UNFINISHED_STRING);
             A(src_a[ofs] == '"');
-            tp->str.n = 0;
-            os = redim(allocator_p, (void * *) &tp->str.a, &tp->str.n,
-                       str_n + 1, 1);
+            ALLOC(os, code_p->allocator_p, str_token_p);
             if (os) return os;
-            for (i = 0, ofs = tp->src_ofs + 1; src_a[ofs] != '"'; )
+            token_p = &str_token_p->base;
+            token_p->type = O71_TT_STRING;
+            str_token_p->n = 0;
+            os = redim(allocator_p, (void * *) &str_token_p->a, 
+                       &str_token_p->n, str_n + 1, 1);
+            if (os)
+            {
+                return os;
+            }
+            for (i = 0, ofs = src_ofs + 1; src_a[ofs] != '"'; )
             {
                 //M("ofs=%zX ch: %c", ofs, src_a[ofs]);
-                if (src_a[ofs] != '\\') tp->str.a[i++] = src_a[ofs++];
+                A(i < str_n);
+                if (src_a[ofs] != '\\') str_token_p->a[i++] = src_a[ofs++];
                 else
                 {
                     ++ofs;
                     switch (ch = src_a[ofs++])
                     {
-                    case '0': tp->str.a[i++] = 0; break;
-                    case 'n': tp->str.a[i++] = '\n'; break;
-                    case 'r': tp->str.a[i++] = '\r'; break;
-                    case 'v': tp->str.a[i++] = '\v'; break;
-                    case 'e': tp->str.a[i++] = '\x1B'; break;
-                    case 't': tp->str.a[i++] = '\t'; break;
-                    case 'a': tp->str.a[i++] = '\a'; break;
-                    case 'b': tp->str.a[i++] = '\b'; break;
-                    case '\\': tp->str.a[i++] = '\\'; break;
-                    case '\'': tp->str.a[i++] = '\''; break;
-                    case '"': tp->str.a[i++] = '\"'; break;
+                    case '0': str_token_p->a[i++] = 0; break;
+                    case 'n': str_token_p->a[i++] = '\n'; break;
+                    case 'r': str_token_p->a[i++] = '\r'; break;
+                    case 'v': str_token_p->a[i++] = '\v'; break;
+                    case 'e': str_token_p->a[i++] = '\x1B'; break;
+                    case 't': str_token_p->a[i++] = '\t'; break;
+                    case 'a': str_token_p->a[i++] = '\a'; break;
+                    case 'b': str_token_p->a[i++] = '\b'; break;
+                    case '\\': str_token_p->a[i++] = '\\'; break;
+                    case '\'': str_token_p->a[i++] = '\''; break;
+                    case '"': str_token_p->a[i++] = '\"'; break;
                     case 'x': // \xAB
-                        tp->str.a[i++] = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
+                        str_token_p->a[i++] 
+                            = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
                             | ALPHANUM_TO_DIGIT(src_a[ofs + 1]);
                         ofs += 2;
                         break;
@@ -5430,7 +4982,7 @@ static o71_status_t tokenize_source
                         ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
                             | (ALPHANUM_TO_DIGIT(src_a[ofs + 1]));
                         ofs += 2;
-                        i += utf8_codepoint_encode(tp->str.a + i, ch);
+                        i += utf8_codepoint_encode(str_token_p->a + i, ch);
                         break;
                     case 'u': // \u1234
                         ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 12)
@@ -5438,7 +4990,7 @@ static o71_status_t tokenize_source
                             | (ALPHANUM_TO_DIGIT(src_a[ofs + 2]) << 4)
                             | (ALPHANUM_TO_DIGIT(src_a[ofs + 3]));
                         ofs += 4;
-                        i += utf8_codepoint_encode(tp->str.a + i, ch);
+                        i += utf8_codepoint_encode(str_token_p->a + i, ch);
                         break;
                     case 'U': // \U123456
                         ch = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 20)
@@ -5448,25 +5000,175 @@ static o71_status_t tokenize_source
                             | (ALPHANUM_TO_DIGIT(src_a[ofs + 4]) << 4)
                             | (ALPHANUM_TO_DIGIT(src_a[ofs + 5]));
                         ofs += 6;
-                        i += utf8_codepoint_encode(tp->str.a + i, ch);
+                        i += utf8_codepoint_encode(str_token_p->a + i, ch);
                         break;
                     }
                 }
             }
-            //M("i=%zu", i);
+            str_token_p->a[str_n] = 0;
+            M("i=%zu, str_n=%zu", i, str_n);
             A(i == str_n);
             A(src_a[ofs] == '"');
             ++ofs;
-            //A(ofs == tp->src_ofs + tp->src_len);
-            break;
-        default:
-            CE(O71_CE_PARSE_BAD_CHAR);
+            //A(ofs == src_ofs + src_len);
         }
+        else
+        {
+            ++ofs;
+            nch = ofs < src_n ? src_a[ofs] : 0;
+            switch (ch)
+            {
+            case '~': type = O71_TT_TILDE; break;
+            case '?': type = O71_TT_QUESTION; break;
+            case '(': type = O71_TT_PAREN_OPEN; break;
+            case ')': type = O71_TT_PAREN_CLOSE; break;
+            case '[': type = O71_TT_SQUARE_BRACKET_OPEN; break;
+            case ']': type = O71_TT_SQUARE_BRACKET_CLOSE; break;
+            case '{': type = O71_TT_CURLY_BRACKET_OPEN; break;
+            case '}': type = O71_TT_CURLY_BRACKET_CLOSE; break;
+            case '.': type = O71_TT_DOT; break;
+            case ',': type = O71_TT_COMMA; break;
+            case ';': type = O71_TT_SEMICOLON; break;
+            case ':': type = O71_TT_COLON; break;
+            case '!':
+                if (nch == '=') { ++ofs; type = O71_TT_EXCLAMATION_EQUAL; }
+                else type = O71_TT_EXCLAMATION;
+                break;
+            case '%':
+                if (nch == '=') { ++ofs; type = O71_TT_PERCENT_EQUAL; }
+                else type = O71_TT_PERCENT;
+                break;
+            case '^':
+                if (nch == '=') { ++ofs; type = O71_TT_CARET_EQUAL; }
+                else type = O71_TT_CARET;
+                break;
+            case '&':
+                switch (nch)
+                {
+                case '&':
+                    if (++ofs < src_n && src_a[ofs] == '=')
+                    {
+                        ++ofs;
+                        type = O71_TT_AMPERSAND_AMPERSAND_EQUAL;
+                        break;
+                    }
+                    else type = O71_TT_AMPERSAND_AMPERSAND;
+                    break;
+                case '=': ++ofs; type = O71_TT_AMPERSAND_EQUAL; break;
+                }
+                break;
+            case '|':
+                switch (nch)
+                {
+                case '&':
+                    if (++ofs < src_n && src_a[ofs] == '=')
+                    {
+                        ++ofs;
+                        type = O71_TT_PIPE_PIPE_EQUAL;
+                        break;
+                    }
+                    else type = O71_TT_PIPE_PIPE;
+                    break;
+                case '=': ++ofs; type = O71_TT_PIPE_EQUAL; break;
+                }
+                break;
+            case '+':
+                switch (nch)
+                {
+                case '+': ++ofs; type = O71_TT_PLUS_PLUS; break;
+                case '=': ++ofs; type = O71_TT_PLUS_EQUAL; break;
+                default: type = O71_TT_PLUS;
+                }
+                break;
+            case '-':
+                switch (nch)
+                {
+                case '-': ++ofs; type = O71_TT_MINUS_MINUS; break;
+                case '=': ++ofs; type = O71_TT_MINUS_EQUAL; break;
+                default: type = O71_TT_MINUS;
+                }
+                break;
+            case '*':
+                switch (nch)
+                {
+                case '*':
+                    if (++ofs < src_n && src_a[ofs] == '=')
+                    {
+                        ++ofs;
+                        type = O71_TT_STAR_STAR_EQUAL;
+                    }
+                    else type = O71_TT_STAR_STAR;
+                    break;
+                case '=': ++ofs; type = O71_TT_STAR_EQUAL; break;
+                default: type = O71_TT_STAR;
+                }
+                break;
+            case '/':
+                if (nch == '=') { ++ofs; type = O71_TT_SLASH_EQUAL; }
+                else type = O71_TT_SLASH;
+                break;
+            case '=':
+                if (nch == '=') { ++ofs; type = O71_TT_EQUAL_EQUAL; }
+                else type = O71_TT_EQUAL;
+                break;
+            case '<':
+                switch (nch)
+                {
+                case '<':
+                    if (++ofs < src_n && src_a[ofs] == '=')
+                    {
+                        ++ofs;
+                        type = O71_TT_LESS_LESS_EQUAL;
+                    }
+                    else type = O71_TT_LESS_LESS;
+                    break;
+                case '=':
+                    ++ofs;
+                    type = O71_TT_LESS_EQUAL;
+                    break;
+                default:
+                    type = O71_TT_LESS;
+                }
+                break;
+            case '>':
+                switch (nch)
+                {
+                case '>':
+                    if (++ofs < src_n && src_a[ofs] == '=')
+                    {
+                        ++ofs;
+                        type = O71_TT_GREATER_GREATER_EQUAL;
+                    }
+                    else type = O71_TT_GREATER_GREATER;
+                    break;
+                case '=':
+                    ++ofs;
+                    type = O71_TT_GREATER_EQUAL;
+                    break;
+                default:
+                    type = O71_TT_GREATER;
+                }
+                break;
+            case '"':
+                break;
+            default:
+                CE(O71_CE_PARSE_BAD_CHAR);
+            }
+            ALLOC(os, code_p->allocator_p, token_p);
+            if (os) return os;
+            token_p->type = type;
+        }
+
         if (ce) break;
-        tp->src_len = ofs - tp->src_ofs;
-        col += tp->src_len;
-        M("token type=%u: %.*s", tp->type, (int) tp->src_len,
-          src_a + tp->src_ofs);
+        token_p->src_ofs = src_ofs;
+        token_p->src_row = row;
+        token_p->src_col = col;
+        col += (token_p->src_len = ofs - src_ofs);
+        token_p->next = NULL;
+        *code_p->token_tail = token_p;
+        code_p->token_tail = &token_p->next;
+        M("token type=%u: %s %.*s", token_p->type, ttname_a[token_p->type], 
+          (int) token_p->src_len, src_a + token_p->src_ofs);
     }
 
 #undef CE
@@ -5479,242 +5181,33 @@ static o71_status_t tokenize_source
         return O71_COMPILE_ERROR;
     }
 
-    os = alloc_token(code_p, &tp);
+    ALLOC(os, code_p->allocator_p, token_p);
     if (os) return os;
-
+    token_p->src_ofs = src_n;
+    token_p->src_len = 0;
+    token_p->src_row = row;
+    token_p->src_col = col;
+    token_p->type = O71_TT_END;
+    token_p->next = NULL;
+    *code_p->token_tail = token_p;
+    code_p->token_tail = &token_p->next;
+    M("tokenization done!");
     return O71_OK;
 }
 
-/* match_token **************************************************************/
-static o71_status_t match_token
+#if _DEBUG
+static void dump_token_list
 (
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    unsigned int type,
-    o71_token_t * * out_pp
+    o71_token_t * token_p,
+    size_t n
 )
 {
-    unsigned int ri;
-    o71_status_t os;
-    o71_token_t * out_p;
-
-code_p->ce_ofs++;
-M("%*smatch_token: type=%s, in=%s %s %s...", (int) code_p->ce_ofs, "", ttname_a[type], ttname_a[in_p->type], in_p->next ?  ttname_a[in_p->next->type] : "none", in_p->next && in_p->next->next ? ttname_a[in_p->next->next->type] : "none");
-    while (type >= O71_TT__COMPLEX)
-    {
-        os = O71_NO_MATCH;
-        for (ri = 0; ri < sizeof(grammar) / sizeof(grammar[0]); ++ri)
-        {
-            if (grammar[ri].target != type) continue;
-            os = match_rule(code_p, in_p, &grammar[ri], &out_p);
-            if (os != O71_NO_MATCH) break;
-        }
-        if (os != O71_OK) break;
-        /* if we matched some rule, go again through the rules to resolve
-         * greedily reflexive rules */
-        in_p = out_p;
-    }
-    if (in_p->type == type)
-    {
-        *out_pp = in_p;
-M("%*smatch_token: type=%s, in=%s %s %s - success", (int) code_p->ce_ofs, "", ttname_a[type], ttname_a[in_p->type], in_p->next ?  ttname_a[in_p->next->type] : "none", in_p->next && in_p->next->next ? ttname_a[in_p->next->next->type] : "none");
-code_p->ce_ofs--;
-        return O71_OK;
-    }
-    // os = free_token(code_p, in_p, O71_TT__COMPLEX);
-    // AOS(os);
-M("%*smatch_token: type=%s, in=%s %s %s - failed", (int) code_p->ce_ofs, "", ttname_a[type], ttname_a[in_p->type], in_p->next ?  ttname_a[in_p->next->type] : "none", in_p->next && in_p->next->next ? ttname_a[in_p->next->next->type] : "none");
-code_p->ce_ofs--;
-    return O71_NO_MATCH;
-}
-
-/* match_rule ***************************************************************/
-static o71_status_t match_rule
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    grammar_rule_t const * rule_p,
-    o71_token_t * * out_pp
-)
-{
-    o71_status_t os;
-    unsigned int i, ii, j;
-    o71_token_t * rtok[RTLEN];
-    o71_token_t * ctok;
-    unsigned int type = rule_p->target;
-
-    if (rule_p->target == rule_p->sources[0])
-    {
-        /* skip reflexive rules unless we already matched the first token */
-        if (rule_p->target != in_p->type) return O71_NO_MATCH;
-        ii = 1;
-        ctok = in_p->next;
-        rtok[0] = in_p;
-    }
-    else
-    {
-        ii = 0;
-        ctok = in_p;
-    }
-
-code_p->ce_ofs++;
-M("%*smatch_rule: %s, in=%s %s %s...", (int) code_p->ce_ofs, "", rule_p->text, ttname_a[in_p->type], in_p->next ?  ttname_a[in_p->next->type] : "none", in_p->next && in_p->next->next ? ttname_a[in_p->next->next->type] : "none");
-    for (i = ii; rule_p->sources[i]; ++i)
-    {
-        os = match_token(code_p, ctok, rule_p->sources[i], &rtok[i]);
-        if (os) break;
-        ctok = rtok[i]->next;
-    }
-M("%*si=%u", (int) code_p->ce_ofs, "", i);
-    while (!rule_p->sources[i])
-    {
-        /* rule matched! */
-        os = alloc_token(code_p, &ctok);
-        if (os) break;
-        ctok->subtokens.n = 0;
-        os = redim(code_p->allocator_p, (void * *) &ctok->subtokens.pa,
-                   &ctok->subtokens.n, i, sizeof(o71_token_t *));
-        if (os)
-        {
-            os = free_token(code_p, ctok, O71_TT__COMPLEX);
-            AOS(os);
-            break;
-        }
-        ctok->src_ofs = rtok[0]->src_ofs;
-        ctok->src_len = rtok[i - 1]->src_ofs + rtok[i - 1]->src_len 
-            - ctok->src_ofs;
-        ctok->src_row = rtok[0]->src_row;
-        ctok->src_col = rtok[0]->src_col;
-        ctok->type = type;
-        for (j = 0; j < i; ++j)
-            ctok->subtokens.pa[j] = rtok[j];
-        ctok->next = rtok[i - 1]->next;
-        *out_pp = ctok;
-M("%*smatch_rule: %s, in=%s %s %s - success", (int) code_p->ce_ofs, "", rule_p->text, ttname_a[ctok->type], ctok->next ?  ttname_a[ctok->next->type] : "none", ctok->next && ctok->next->next ? ttname_a[ctok->next->next->type] : "none");
-code_p->ce_ofs--;
-        return O71_OK;
-    }
-
-    for (j = ii; j < i; ++j)
-    {
-        os = free_token(code_p, rtok[j], O71_TT__COMPLEX);
-        AOS(os);
-    }
-M("%*smatch_rule: %s, in=%s %s %s - failed", (int) code_p->ce_ofs, "", rule_p->text, ttname_a[in_p->type], in_p->next ?  ttname_a[in_p->next->type] : "none", in_p->next && in_p->next->next ? ttname_a[in_p->next->next->type] : "none");
-code_p->ce_ofs--;
-    return O71_NO_MATCH;
+    for (; token_p && n; token_p = token_p->next, --n)
+        printf("%s%*s", ttname_a[token_p->type], (int) !!n, "");
 }
 
 
-/* apply_grammar ************************************************************/
-static o71_status_t apply_grammar
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    unsigned int type,
-    o71_token_t * * out_pp
-)
-{
-    unsigned int i, j, js, k;
-    o71_status_t os, ros;
-    o71_token_t * rtok[RTLEN], * ctok;
-
-    code_p->ce_ofs++;
-    M("%*sapply_gramar: req_type=%s, in=%s %s %s...", (int) code_p->ce_ofs, "", ttname_a[type], ttname_a[in_p->type], in_p->next ?  ttname_a[in_p->next->type] : "none", in_p->next && in_p->next->next ? ttname_a[in_p->next->next->type] : "none");
-    if (type < O71_TT__COMPLEX)
-    {
-        if (in_p->type != type) { code_p->ce_ofs--; return O71_NO_MATCH; }
-        *out_pp = in_p;
-        M("%*ssimple match!", (int) code_p->ce_ofs, "");
-        code_p->ce_ofs--;
-        return O71_OK;
-    }
-    ros = O71_NO_MATCH;
-    for (i = 0; i < sizeof(grammar) / sizeof(grammar[0]); ++i)
-    {
-        /* find a rule that produces what we need */
-        if (grammar[i].target != type) continue;
-        M("%*strying to match %s...", (int) code_p->ce_ofs, "", grammar[i].text);
-        /* if the rule starts with the target token then
-         * handle specially the first token */
-        if (type == grammar[i].sources[0])
-        {
-            /* if the first input token is not the target (and first token
-             * in the rule) then "fail" the rule for now */
-            if (in_p->type != type) continue;
-            /* now we have the target token as the first in the input list
-             * and the first in the current rule so start matching from 2nd
-             * token in the rule */
-            js = 1;
-            ctok = in_p->next;
-            rtok[0] = in_p;
-        }
-        else
-        {
-            js = 0;
-            ctok = in_p;
-        }
-
-        for (os = O71_OK, j = js; grammar[i].sources[j]; ++j)
-        {
-            unsigned int src = grammar[i].sources[j];
-            os = apply_grammar(code_p, ctok, src, &rtok[j]);
-            if (os) break;
-            do
-            {
-                ctok = rtok[j];
-                os = apply_grammar(code_p, rtok[j], src, &rtok[j]);
-            }
-            while (!os && ctok != rtok[j]);
-            if (os && os != O71_NO_MATCH) break;
-            ctok = rtok[j]->next;
-        }
-        if (!grammar[i].sources[j])
-        {
-            M("%*smatched rule %s!", (int) code_p->ce_ofs, "", grammar[i].text);
-            ros = alloc_token(code_p, out_pp);
-            if (ros) break;
-            ctok = *out_pp;
-            ctok->subtokens.n = 0;
-            ros = redim(code_p->allocator_p, (void * *) &ctok->subtokens.pa,
-                        &ctok->subtokens.n, j, sizeof(o71_token_t *));
-            if (ros)
-            {
-                os = free_token(code_p, ctok, O71_TT__COMPLEX);
-                AOS(os);
-                break;
-            }
-            ctok->src_ofs = rtok[0]->src_ofs;
-            ctok->src_len = rtok[j - 1]->src_ofs + rtok[j - 1]->src_len 
-                - ctok->src_ofs;
-            ctok->src_row = rtok[0]->src_row;
-            ctok->src_col = rtok[0]->src_col;
-            ctok->type = type;
-            for (k = 0; k < j; ++k)
-                ctok->subtokens.pa[k] = rtok[k];
-            ctok->next = rtok[j - 1]->next;
-            break;
-        }
-        M("%*scleaning up unmatched rule %s (j=%u)", (int) code_p->ce_ofs, "", grammar[i].text, j);
-        for (; js < j; ++js)
-        {
-            os = free_token(code_p, rtok[js], O71_TT__COMPLEX);
-            AOS(os);
-        }
-        /* break if rule matched but we had no memory to allocate a token */
-        if (!grammar[i].sources[j]) break;
-    }
-    /* if none of the rules matched, then check if we already have that token */
-    if (ros == O71_NO_MATCH && in_p->type == type)
-    {
-        *out_pp = in_p;
-        ros = O71_OK;
-    }
-    code_p->ce_ofs--;
-    return ros;
-}
-
-
+#endif
 
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN
