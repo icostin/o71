@@ -785,10 +785,26 @@ static o71_status_t tokenize_source
     o71_code_t * code_p
 );
 
+/*  match_stmt  */
+/**
+ *  Matches a statement.
+ */
 static o71_status_t match_stmt
 (
     o71_code_t * code_p,
-    o71_token_t * in_p
+    o71_token_t * in_p,
+    o71_token_t * * stmt_pp
+);
+
+/*  match_expr  */
+/**
+ *  Matches an expression.
+ */
+static o71_status_t match_expr
+(
+    o71_code_t * code_p,
+    o71_token_t * in_p,
+    o71_expr_token_t * * expr_pp
 );
 
 #if O71_DEBUG
@@ -2566,6 +2582,7 @@ O71_API o71_status_t o71_compile
 {
     o71_status_t os;
     o71_token_t * crt_token_p;
+    o71_token_t * stmt_token_p;
 
     code_p->allocator_p = allocator_p;
     code_p->src_name = src_name;
@@ -2579,10 +2596,14 @@ O71_API o71_status_t o71_compile
 
     code_p->ce_ofs = 0;
 
+    code_p->stmt_list = NULL;
+    code_p->token_tail = &code_p->stmt_list;
     for (crt_token_p = code_p->token_list; crt_token_p->type != O71_TT_END;)
     {
-        os = match_stmt(code_p, crt_token_p);
+        os = match_stmt(code_p, crt_token_p, code_p->token_tail);
         if (os) return os;
+        (*code_p->token_tail)->next = NULL;
+        code_p->token_tail = &(*code_p->token_tail)->next;
     }
 
     return O71_OK;
@@ -2592,12 +2613,65 @@ O71_API o71_status_t o71_compile
 static o71_status_t match_stmt
 (
     o71_code_t * code_p,
-    o71_token_t * in_p
+    o71_token_t * in_p,
+    o71_token_t * * stmt_pp
+)
+{
+    o71_expr_token_t * expr_p;
+    o71_status_t os;
+
+    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
+    A(in_p->type != O71_TT_END);
+    switch (in_p->type)
+    {
+    case O71_TT_IF:
+        return O71_TODO;
+    case O71_TT_FOR:
+        return O71_TODO;
+    case O71_TT_WHILE:
+        return O71_TODO;
+    case O71_TT_RETURN:
+        return O71_TODO;
+    case O71_TT_DO:
+        return O71_TODO;
+    case O71_TT_BREAK:
+        return O71_TODO;
+    case O71_TT_GOTO:
+        return O71_TODO;
+    case O71_TT_CASE:
+        return O71_TODO;
+    case O71_TT_SWITCH:
+        return O71_TODO;
+    case O71_TT_CURLY_BRACKET_OPEN:
+        return O71_TODO;
+    default:
+        os = match_expr(code_p, in_p, &expr_p);
+        if (os) return os;
+        if (expr_p->base.next->type != O71_TT_SEMICOLON)
+        {
+            code_p->ce_code = O71_CE_NO_SEMICOLON_AFTER_EXPR;
+            code_p->ce_row = expr_p->base.next->src_row;
+            code_p->ce_col = expr_p->base.next->src_col;
+            code_p->ce_ofs = expr_p->base.next->src_ofs;
+            return O71_COMPILE_ERROR;
+        };
+
+        return O71_TODO;
+    };
+}
+
+/* match_expr ***************************************************************/
+static o71_status_t match_expr
+(
+    o71_code_t * code_p,
+    o71_token_t * in_p,
+    o71_expr_token_t * * expr_pp
 )
 {
     MP("tokens: "); dump_token_list(in_p, 3); P("\n");
     return O71_TODO;
 }
+
 
 
 /* o71_code_free ************************************************************/
@@ -4608,75 +4682,20 @@ static o71_status_t free_token
     o71_status_t os;
     unsigned int i;
     o71_str_token_t * str_token_p;
+    o71_expr_stmt_token_t * expr_stmt_token_p;
+
     if (token_p->type < min_tt) return O71_OK;
-    M("free_token %p(type=%s)", token_p, ttname_a[token_p->type]);
+    //M("free_token %p(type=%s)", token_p, ttname_a[token_p->type]);
     switch (token_p->type)
     {
     case O71_TT_STRING:
         str_token_p = (o71_str_token_t *) token_p;
         FREE_ARRAY(code_p->allocator_p, str_token_p->a, str_token_p->n);
         return O71_OK;
-    case O71_TT_END:
-    case O71_TT_TILDE:
-    case O71_TT_EXCLAMATION:
-    case O71_TT_QUESTION:
-    case O71_TT_PERCENT:
-    case O71_TT_CARET:
-    case O71_TT_AMPERSAND:
-    case O71_TT_PIPE:
-    case O71_TT_STAR:
-    case O71_TT_SLASH:
-    case O71_TT_PAREN_OPEN:
-    case O71_TT_PAREN_CLOSE:
-    case O71_TT_SQUARE_BRACKET_OPEN:
-    case O71_TT_SQUARE_BRACKET_CLOSE:
-    case O71_TT_CURLY_BRACKET_OPEN:
-    case O71_TT_CURLY_BRACKET_CLOSE:
-    case O71_TT_EQUAL:
-    case O71_TT_PLUS:
-    case O71_TT_MINUS:
-    case O71_TT_LESS:
-    case O71_TT_GREATER:
-    case O71_TT_DOT:
-    case O71_TT_COMMA:
-    case O71_TT_SEMICOLON:
-    case O71_TT_COLON:
-    case O71_TT_PLUS_PLUS:
-    case O71_TT_MINUS_MINUS:
-    case O71_TT_STAR_STAR:
-    case O71_TT_LESS_LESS:
-    case O71_TT_GREATER_GREATER:
-    case O71_TT_AMPERSAND_AMPERSAND:
-    case O71_TT_PIPE_PIPE:
-    case O71_TT_EQUAL_EQUAL:
-    case O71_TT_EXCLAMATION_EQUAL:
-    case O71_TT_PLUS_EQUAL:
-    case O71_TT_MINUS_EQUAL:
-    case O71_TT_STAR_EQUAL:
-    case O71_TT_SLASH_EQUAL:
-    case O71_TT_PERCENT_EQUAL:
-    case O71_TT_LESS_EQUAL:
-    case O71_TT_GREATER_EQUAL:
-    case O71_TT_LESS_LESS_EQUAL:
-    case O71_TT_GREATER_GREATER_EQUAL:
-    case O71_TT_AMPERSAND_EQUAL:
-    case O71_TT_PIPE_EQUAL:
-    case O71_TT_CARET_EQUAL:
-    case O71_TT_STAR_STAR_EQUAL:
-    case O71_TT_AMPERSAND_AMPERSAND_EQUAL:
-    case O71_TT_PIPE_PIPE_EQUAL:
-    case O71_TT_RETURN:
-    case O71_TT_BREAK:
-    case O71_TT_GOTO:
-    case O71_TT_IF:
-    case O71_TT_ELSE:
-    case O71_TT_WHILE:
-    case O71_TT_DO:
-    case O71_TT_FOR:
-    case O71_TT_SWITCH:
-    case O71_TT_CASE:
-    case O71_TT_INTEGER:
-    case O71_TT_IDENTIFIER:
+    case O71_TT_STMT:
+        expr_stmt_token_p = (o71_expr_stmt_token_t *) token_p;
+        os = free_token(code_p, &expr_stmt_token_p->expr_p->base, min_tt);
+        return os;
     default:
         break;
     }
@@ -4945,7 +4964,7 @@ static o71_status_t tokenize_source
             token_p = &str_token_p->base;
             token_p->type = O71_TT_STRING;
             str_token_p->n = 0;
-            os = redim(allocator_p, (void * *) &str_token_p->a, 
+            os = redim(allocator_p, (void * *) &str_token_p->a,
                        &str_token_p->n, str_n + 1, 1);
             if (os)
             {
@@ -4973,7 +4992,7 @@ static o71_status_t tokenize_source
                     case '\'': str_token_p->a[i++] = '\''; break;
                     case '"': str_token_p->a[i++] = '\"'; break;
                     case 'x': // \xAB
-                        str_token_p->a[i++] 
+                        str_token_p->a[i++]
                             = (ALPHANUM_TO_DIGIT(src_a[ofs]) << 4)
                             | ALPHANUM_TO_DIGIT(src_a[ofs + 1]);
                         ofs += 2;
@@ -5167,7 +5186,7 @@ static o71_status_t tokenize_source
         token_p->next = NULL;
         *code_p->token_tail = token_p;
         code_p->token_tail = &token_p->next;
-        M("token type=%u: %s %.*s", token_p->type, ttname_a[token_p->type], 
+        M("token type=%u: %s %.*s", token_p->type, ttname_a[token_p->type],
           (int) token_p->src_len, src_a + token_p->src_ofs);
     }
 

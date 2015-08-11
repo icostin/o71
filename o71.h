@@ -205,6 +205,8 @@ typedef struct o71_token_s o71_token_t;
 typedef struct o71_str_token_s o71_str_token_t;
 typedef struct o71_id_token_s o71_id_token_t;
 typedef struct o71_int_token_s o71_int_token_t;
+typedef struct o71_expr_token_s o71_expr_token_t;
+typedef struct o71_expr_stmt_token_s o71_expr_stmt_token_t;
 typedef struct o71_world_s o71_world_t;
 
 /* o71_ref_t ****************************************************************/
@@ -679,6 +681,8 @@ enum o71_compile_error_e
     O71_CE_PARSE_UNFINISHED_STRING,
     O71_CE_PARSE_BAD_STRING_ESCAPE,
     O71_CE_PARSE_BAD_CHAR,
+
+    O71_CE_NO_SEMICOLON_AFTER_EXPR,
 };
 
 struct o71_token_s
@@ -689,6 +693,7 @@ struct o71_token_s
     uint32_t src_row;
     uint32_t src_col;
     uint8_t type;
+    uint8_t subtype;
 };
 
 struct o71_id_token_s
@@ -711,12 +716,25 @@ struct o71_int_token_s
     uint64_t val;
 };
 
+struct o71_expr_token_s
+{
+    o71_token_t base;
+    o71_token_t * sub_expr[2];
+};
+
+struct o71_expr_stmt_token_s
+{
+    o71_token_t base;
+    o71_expr_token_t * expr_p;
+};
+
 
 struct o71_code_s
 {
     char const * src_name;
     uint8_t const * src_a;
     o71_token_t * token_list;
+    o71_token_t * stmt_list;
     o71_token_t * * token_tail;
     o71_token_t * src_token_p; // token of type source with all script parsed
     o71_allocator_t * allocator_p;
