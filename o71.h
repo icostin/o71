@@ -205,7 +205,9 @@ typedef struct o71_token_s o71_token_t;
 typedef struct o71_str_token_s o71_str_token_t;
 typedef struct o71_id_token_s o71_id_token_t;
 typedef struct o71_int_token_s o71_int_token_t;
-typedef struct o71_expr_token_s o71_expr_token_t;
+typedef struct o71_unary_expr_token_s o71_unary_expr_token_t;
+typedef struct o71_binary_expr_token_s o71_binary_expr_token_t;
+typedef struct o71_cond_expr_token_s o71_cond_expr_token_t;
 typedef struct o71_expr_stmt_token_s o71_expr_stmt_token_t;
 typedef struct o71_world_s o71_world_t;
 
@@ -313,6 +315,39 @@ struct o71_mem_obj_s
     };
 };
 
+struct o71_kv_s
+{
+    o71_ref_t key_r;
+    o71_ref_t value_r;
+};
+
+struct o71_kvnode_s
+{
+    uintptr_t clr[2]; // color+left_node_ptr / right_node_ptr
+    o71_kv_t kv;
+};
+
+struct o71_kvbag_loc_s
+{
+    union
+    {
+        struct
+        {
+            unsigned int index;
+        } array;
+        struct
+        {
+            o71_kvnode_t * node_a[0x40];
+            uint8_t side_a[0x40];
+            unsigned int last_x;
+        } rbtree;
+    };
+    o71_status_t cmp_error;
+#if O71_CHECKED
+    o71_status_t status;
+#endif
+};
+
 struct o71_kvbag_s
 {
     union
@@ -377,39 +412,6 @@ struct o71_struct_class_s
      *  located; this allows us to reuse the struct get/set field functions
      *  for other classes
      */
-};
-
-struct o71_kv_s
-{
-    o71_ref_t key_r;
-    o71_ref_t value_r;
-};
-
-struct o71_kvnode_s
-{
-    uintptr_t clr[2]; // color+left_node_ptr / right_node_ptr
-    o71_kv_t kv;
-};
-
-struct o71_kvbag_loc_s
-{
-    union
-    {
-        struct
-        {
-            unsigned int index;
-        } array;
-        struct
-        {
-            o71_kvnode_t * node_a[0x40];
-            uint8_t side_a[0x40];
-            unsigned int last_x;
-        } rbtree;
-    };
-    o71_status_t cmp_error;
-#if O71_CHECKED
-    o71_status_t status;
-#endif
 };
 
 struct o71_reg_obj_s
@@ -647,7 +649,6 @@ enum o71_token_type_e
     O71_TT_VAR_INIT_LIST,
     O71_TT_ARG_DECL,
     O71_TT_ARG_DECL_LIST,
-    O71_TT_EXPR,
     O71_TT_EXPR_LIST,
     O71_TT_ATOM_EXPR,
     O71_TT_POSTFIX_EXPR,
@@ -664,6 +665,7 @@ enum o71_token_type_e
     O71_TT_LOGIC_XOR_EXPR,
     O71_TT_LOGIC_OR_EXPR,
     O71_TT_COND_EXPR,
+    O71_TT_EXPR,
     O71_TT__COUNT
 };
 
@@ -682,7 +684,8 @@ enum o71_compile_error_e
     O71_CE_PARSE_BAD_STRING_ESCAPE,
     O71_CE_PARSE_BAD_CHAR,
 
-    O71_CE_NO_SEMICOLON_AFTER_EXPR,
+    O71_CE_BAD_STMT_AFTER_EXPR,
+    O71_CE_BAD_ATOM,
 };
 
 struct o71_token_s
@@ -693,7 +696,7 @@ struct o71_token_s
     uint32_t src_row;
     uint32_t src_col;
     uint8_t type;
-    uint8_t subtype;
+    uint8_t base_type;
 };
 
 struct o71_id_token_s
@@ -716,18 +719,38 @@ struct o71_int_token_s
     uint64_t val;
 };
 
-struct o71_expr_token_s
+struct o71_unary_expr_token_s
 {
     o71_token_t base;
-    o71_token_t * sub_expr[2];
+    o71_token_t * sub_expr_p;
+};
+
+struct o71_binary_expr_token_s
+{
+    o71_token_t base;
+    o71_token_t * sub_expr_pa[2];
+};
+
+struct o71_cond_expr_token_s
+{
+    o71_token_t base;
+    o71_token_t * cond_p;
+    o71_token_t * sub_expr_pa[2];
 };
 
 struct o71_expr_stmt_token_s
 {
     o71_token_t base;
-    o71_expr_token_t * expr_p;
+    o71_token_t * expr_p;
 };
 
+struct o71_stmt_list_token_s
+{
+    o71_token_t base;
+    o71_token_t * head_p;
+    o71_token_t * * tail_pp;
+    o71_kvbag_t locals;
+};
 
 struct o71_code_s
 {

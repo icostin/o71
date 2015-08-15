@@ -804,7 +804,7 @@ static o71_status_t match_expr
 (
     o71_code_t * code_p,
     o71_token_t * in_p,
-    o71_expr_token_t * * expr_pp
+    o71_token_t * * expr_pp
 );
 
 #if O71_DEBUG
@@ -960,7 +960,6 @@ static char const * ttname_a[O71_TT__COUNT] =
     "var_init_list",
     "arg_decl",
     "arg_decl_list",
-    "expr",
     "expr_list",
     "atom_expr",
     "postfix_expr",
@@ -976,7 +975,8 @@ static char const * ttname_a[O71_TT__COUNT] =
     "logic_and_expr",
     "logic_xor_expr",
     "logic_or_expr",
-    "cond_expr"
+    "cond_expr",
+    "expr",
 };
 
 /* utf8_codepoint_length ****************************************************/
@@ -2617,7 +2617,9 @@ static o71_status_t match_stmt
     o71_token_t * * stmt_pp
 )
 {
-    o71_expr_token_t * expr_p;
+    o71_token_t * lookup_p;
+    o71_token_t * expr_p;
+    o71_expr_stmt_token_t * expr_stmt_p;
     o71_status_t os;
 
     MP("tokens: "); dump_token_list(in_p, 3); P("\n");
@@ -2647,17 +2649,97 @@ static o71_status_t match_stmt
     default:
         os = match_expr(code_p, in_p, &expr_p);
         if (os) return os;
-        if (expr_p->base.next->type != O71_TT_SEMICOLON)
+        lookup_p = expr_p->next;
+        switch (lookup_p->type)
         {
-            code_p->ce_code = O71_CE_NO_SEMICOLON_AFTER_EXPR;
-            code_p->ce_row = expr_p->base.next->src_row;
-            code_p->ce_col = expr_p->base.next->src_col;
-            code_p->ce_ofs = expr_p->base.next->src_ofs;
+        case O71_TT_SEMICOLON:
+            ALLOC(os, code_p->allocator_p, expr_stmt_p);
+            if (os) return os;
+            return O71_TODO;
+        case O71_TT_IDENTIFIER:
+            return O71_TODO;
+        default:
+            code_p->ce_code = O71_CE_BAD_STMT_AFTER_EXPR;
+            code_p->ce_row = lookup_p->src_row;
+            code_p->ce_col = lookup_p->src_col;
+            code_p->ce_ofs = lookup_p->src_ofs;
             return O71_COMPILE_ERROR;
-        };
-
+        }
         return O71_TODO;
     };
+}
+
+/* match_cond_expr **********************************************************/
+static o71_status_t match_cond_expr
+(
+    o71_code_t * code_p,
+    o71_token_t * in_p,
+    o71_token_t * * expr_pp
+)
+{
+    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
+    return O71_TODO;
+}
+
+/* match_atom_expr **********************************************************/
+static o71_status_t match_atom_expr
+(
+    o71_code_t * code_p,
+    o71_token_t * in_p,
+    o71_token_t * * expr_pp
+)
+{
+    o71_unary_expr_token_t * atom_p;
+    o71_status_t os;
+    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
+    switch (in_p->type)
+    {
+    case O71_TT_IDENTIFIER:
+        //ALLOC(os, code_p->allocator_p, atom_p);
+        //if (os) return os;
+        //atom_p->base->next = in_p->next;
+        //atom_p->base->src_ofs = in_p->src_ofs;
+        //atom_p->base->src_len = in_p->src_len;
+        //atom_p->base->src_row = in_p->src_row;
+        //atom_p->base->src_col = in_p->src_col;
+        //atom_p->base->type = O71_TT_ATOM_EXPR;
+        //atom_p->base->base_type = O71_TT_IDENTIFIER;
+        return O71_TODO;
+    case O71_TT_STRING:
+        return O71_TODO;
+    case O71_TT_INTEGER:
+        return O71_TODO;
+    case O71_TT_PAREN_OPEN:
+        return O71_TODO;
+    }
+    return O71_TODO;
+}
+
+/* match_postfix_expr *******************************************************/
+static o71_status_t match_postfix_expr
+(
+    o71_code_t * code_p,
+    o71_token_t * in_p,
+    o71_token_t * * expr_pp
+)
+{
+    o71_token_t * lookup_p, * atom_p;
+    o71_status_t os;
+    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
+    for (;;)
+    {
+        lookup_p = in_p->next;
+        if (in_p->type == O71_TT_POSTFIX_EXPR)
+        {
+            return O71_TODO;
+        }
+        os = match_atom_expr(code_p, in_p, &atom_p);
+        if (os) return os;
+        atom_p->type = O71_TT_POSTFIX_EXPR;
+        (void) lookup_p;
+    }
+
+    return O71_TODO;
 }
 
 /* match_expr ***************************************************************/
@@ -2665,14 +2747,14 @@ static o71_status_t match_expr
 (
     o71_code_t * code_p,
     o71_token_t * in_p,
-    o71_expr_token_t * * expr_pp
+    o71_token_t * * expr_pp
 )
 {
+    o71_status_t os;
     MP("tokens: "); dump_token_list(in_p, 3); P("\n");
+
     return O71_TODO;
 }
-
-
 
 /* o71_code_free ************************************************************/
 O71_API o71_status_t o71_code_free
@@ -4682,7 +4764,10 @@ static o71_status_t free_token
     o71_status_t os;
     unsigned int i;
     o71_str_token_t * str_token_p;
-    o71_expr_stmt_token_t * expr_stmt_token_p;
+    o71_expr_stmt_token_t * expr_stmt_p;
+    o71_unary_expr_token_t * unary_expr_p;
+    o71_binary_expr_token_t * binary_expr_p;
+    o71_cond_expr_token_t * cond_expr_p;
 
     if (token_p->type < min_tt) return O71_OK;
     //M("free_token %p(type=%s)", token_p, ttname_a[token_p->type]);
@@ -4693,9 +4778,42 @@ static o71_status_t free_token
         FREE_ARRAY(code_p->allocator_p, str_token_p->a, str_token_p->n);
         return O71_OK;
     case O71_TT_STMT:
-        expr_stmt_token_p = (o71_expr_stmt_token_t *) token_p;
-        os = free_token(code_p, &expr_stmt_token_p->expr_p->base, min_tt);
+        expr_stmt_p = (o71_expr_stmt_token_t *) token_p;
+        os = free_token(code_p, expr_stmt_p->expr_p, min_tt);
         return os;
+    case O71_TT_ATOM_EXPR:
+    case O71_TT_POSTFIX_EXPR:
+    case O71_TT_PREFIX_EXPR:
+        unary_expr_p = (o71_unary_expr_token_t *) token_p;
+        os = free_token(code_p, unary_expr_p->sub_expr_p, min_tt);
+        return os;
+    case O71_TT_EXP_EXPR:
+    case O71_TT_AND_EXPR:
+    case O71_TT_OR_EXPR:
+    case O71_TT_XOR_EXPR:
+    case O71_TT_MUL_EXPR:
+    case O71_TT_ADD_EXPR:
+    case O71_TT_CMP_EXPR:
+    case O71_TT_EQU_EXPR:
+    case O71_TT_LOGIC_AND_EXPR:
+    case O71_TT_LOGIC_XOR_EXPR:
+    case O71_TT_LOGIC_OR_EXPR:
+    case O71_TT_EXPR:
+        binary_expr_p = (o71_binary_expr_token_t *) token_p;
+        os = free_token(code_p, binary_expr_p->sub_expr_pa[0], min_tt);
+        if (os) return (os);
+        os = free_token(code_p, binary_expr_p->sub_expr_pa[1], min_tt);
+        return os;
+
+    case O71_TT_COND_EXPR:
+        cond_expr_p = (o71_cond_expr_token_t *) token_p;
+        os = free_token(code_p, cond_expr_p->sub_expr_pa[0], min_tt);
+        if (os) return (os);
+        os = free_token(code_p, cond_expr_p->sub_expr_pa[1], min_tt);
+        if (os) return (os);
+        os = free_token(code_p, cond_expr_p->cond_p, min_tt);
+        return os;
+
     default:
         break;
     }
@@ -5611,34 +5729,43 @@ static int test ()
 /* compile_error_msg ********************************************************/
 static int compile_error_msg (o71_code_t const * code_p, char * buf, size_t len)
 {
+    size_t pfx_len;
+    if (!len) return 1;
+    buf[--len] = 0;
+    snprintf(buf, len, "%s:%u:%u: error: ",
+             code_p->src_name, code_p->ce_row, code_p->ce_col);
+    pfx_len = strlen(buf);
+    len -= pfx_len;
+    buf += pfx_len;
+
     switch (code_p->ce_code)
     {
     case O71_CE_PARSE_BAD_CONTROL_CHAR:
-        snprintf(buf, len, "%s:%u:%u: error: bad control char 0x%02X",
-                 code_p->src_name, code_p->ce_row, code_p->ce_col,
+        snprintf(buf, len, "bad control char 0x%02X",
                  code_p->src_a[code_p->ce_ofs]);
         break;
     case O71_CE_PARSE_BAD_UTF8_START_BYTE:
-        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 start byte 0x%02X",
-                 code_p->src_name, code_p->ce_row, code_p->ce_col,
+        snprintf(buf, len, "bad UTF8 start byte 0x%02X",
                  code_p->src_a[code_p->ce_ofs]);
         break;
     case O71_CE_PARSE_OVERLY_LONG_ENCODED_UTF8_CHAR:
-        snprintf(buf, len, "%s:%u:%u: error: overly long encoded UTF8 char",
-                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        snprintf(buf, len, "overly long encoded UTF8 char");
         break;
     case O71_CE_PARSE_TRUNCATED_UTF8_CHAR:
-        snprintf(buf, len, "%s:%u:%u: error: truncated UTF8 char",
-                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        snprintf(buf, len, "truncated UTF8 char");
         break;
     case O71_CE_PARSE_BAD_UTF8_CONTINUATION:
-        snprintf(buf, len, "%s:%u:%u: error: bad UTF8 continuation byte",
-                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        snprintf(buf, len, "bad UTF8 continuation byte");
         break;
     case O71_CE_PARSE_SURROGATE_CODEPOINT:
-        snprintf(buf, len, "%s:%u:%u: error: surrogate Unicode codepoint",
-                 code_p->src_name, code_p->ce_row, code_p->ce_col);
+        snprintf(buf, len, "surrogate Unicode codepoint");
         break;
+    case O71_CE_BAD_STMT_AFTER_EXPR:
+        snprintf(buf, len, "expecting ';' or identifier after expression "
+                 "starting a statement");
+        break;
+    case O71_CE_BAD_ATOM:
+        snprintf(buf, len, "expecting identifier, string, or integer");
     default:
         snprintf(buf, len, "compile error code: %u", code_p->ce_code);
     }
@@ -5684,7 +5811,6 @@ static int run_script (int ac, char const * const * av)
             if (os == O71_COMPILE_ERROR)
             {
                 compile_error_msg(&code, msg, sizeof(msg));
-                msg[sizeof(msg) - 1] = 0;
                 fputs(msg, stderr);
                 break;
             }
