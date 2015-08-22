@@ -208,8 +208,14 @@ typedef struct o71_int_token_s o71_int_token_t;
 typedef struct o71_unary_expr_token_s o71_unary_expr_token_t;
 typedef struct o71_binary_expr_token_s o71_binary_expr_token_t;
 typedef struct o71_cond_expr_token_s o71_cond_expr_token_t;
-typedef struct o71_expr_stmt_token_s o71_expr_stmt_token_t;
 typedef struct o71_world_s o71_world_t;
+typedef struct o71_var_spec_s o71_var_spec_t;
+typedef struct o71_expr_list_token_s o71_expr_list_token_t;
+typedef struct o71_func_token_s o71_func_token_t;
+typedef struct o71_stmt_list_token_s o71_stmt_list_token_t;
+typedef struct o71_block_stmt_token_s o71_block_stmt_token_t;
+typedef struct o71_alloc_header_s o71_alloc_header_t;
+typedef struct o71_alloc_footer_s o71_alloc_footer_t;
 
 /* o71_ref_t ****************************************************************/
 /**
@@ -513,6 +519,22 @@ struct o71_script_exe_ctx_s
     o71_ref_t var_ra[0];
 };
 
+struct o71_alloc_header_s
+{
+    o71_allocator_t * allocator_p;
+    o71_alloc_header_t * next_p;
+    o71_alloc_header_t * prev_p;
+    size_t size;
+    char const * func;
+    uintptr_t line;
+    uintptr_t tag;
+};
+
+struct o71_alloc_footer_s
+{
+    uintptr_t tag;
+};
+
 struct o71_allocator_s
 {
     /*  realloc  */
@@ -529,6 +551,9 @@ struct o71_allocator_s
     size_t mem_usage;
     size_t mem_limit;
     size_t mem_peak;
+#if O71_CHECKED
+    o71_alloc_header_t list;
+#endif
 };
 
 struct o71_world_s
@@ -631,7 +656,7 @@ enum o71_token_type_e
     O71_TT_IDENTIFIER,
     O71_TT__COMPLEX,
     O71_TT_SOURCE = O71_TT__COMPLEX,
-    O71_TT_STMT_SEQ,
+    O71_TT_STMT_SEQ, /* fills in a given o71_block_stmt_token_t */
     O71_TT_STMT,
     O71_TT_DECL_START,
     O71_TT_BLOCK_STMT,
@@ -738,10 +763,20 @@ struct o71_cond_expr_token_s
     o71_token_t * sub_expr_pa[2];
 };
 
-struct o71_expr_stmt_token_s
+struct o71_expr_list_token_s
 {
     o71_token_t base;
-    o71_token_t * expr_p;
+    o71_token_t * expr_list_p;
+    o71_token_t * * expr_tail_pp;
+};
+
+struct o71_func_token_s
+{
+    o71_token_t base;
+    o71_token_t * ret_type_p;
+    o71_token_t * name_p;
+    o71_token_t * args_p;
+    o71_block_stmt_token_t * body_p;
 };
 
 struct o71_stmt_list_token_s
@@ -752,15 +787,29 @@ struct o71_stmt_list_token_s
     o71_kvbag_t locals;
 };
 
+struct o71_var_spec_s
+{
+    o71_var_spec_t * next;
+    o71_ref_t name_isr;
+    o71_token_t * type_expr_p;
+};
+
+struct o71_block_stmt_token_s
+{
+    o71_token_t base;
+    o71_stmt_list_token_t * stmt_list_p;
+    o71_var_spec_t * var_list_p;
+    o71_var_spec_t * * var_tail_pp;
+};
+
 struct o71_code_s
 {
     char const * src_name;
     uint8_t const * src_a;
     o71_token_t * token_list;
-    o71_token_t * stmt_list;
     o71_token_t * * token_tail;
-    o71_token_t * src_token_p; // token of type source with all script parsed
     o71_allocator_t * allocator_p;
+    o71_block_stmt_token_t body;
     size_t src_n;
     unsigned int ce_code;
     uint32_t ce_row, ce_col;
@@ -1374,8 +1423,8 @@ O71_API o71_status_t o71_reg_class_create
  */
 O71_API o71_status_t o71_compile
 (
+    o71_world_t * world_p,
     o71_code_t * code_p,
-    o71_allocator_t * allocator_p,
     char const * src_name,
     uint8_t const * src_a,
     size_t src_n

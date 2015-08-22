@@ -57,9 +57,11 @@
 #define AOS(_os) \
     if ((_os) == O71_OK) ; \
     else do { M("assert status failed: %s", N(_os)); return (_os); } while (0)
+#define redim(_a, _d, _c, _n, _i) (redim_func((_a), (_d), (_c), (_n), (_i), __FUNCTION__, __LINE__))
 #else
 #define A(_cond) ((void) 0)
 #define AOS(_os) ((void) (_os))
+#define redim(_a, _d, _c, _n, _i) (redim_func((_a), (_d), (_c), (_n), (_i)))
 #endif
 
 #define ENCODE_FREE_OBJECT_SLOT(_x) (((_x) << 1) | 1)
@@ -77,6 +79,7 @@
 #define SET_CHILD(_node, _side, _child) \
     ((_node)->clr[(_side)] = ((_node)->clr[(_side)] & 1) | (uintptr_t) (_child))
 #define OTHER_SIDE(_side) ((_side) ^ 1)
+
 
 typedef struct grammar_rule_s grammar_rule_t;
 #define RTLEN 10
@@ -133,13 +136,16 @@ static unsigned int utf8_codepoint_encode
  *  @retval O71_BUG
  *  @retval O71_TODO
  */
-static o71_status_t redim
+static o71_status_t redim_func
 (
     o71_allocator_t * allocator_p,
     void * * data_pp,
     size_t * crt_count_p,
     size_t new_count,
     size_t item_size
+#if O71_CHECKED
+    , char const * func, unsigned int line
+#endif
 );
 
 /*  extend_array  */
@@ -1086,6 +1092,10 @@ O71_API o71_allocator_t * o71_allocator_init
     allocator_p->mem_usage = 0;
     allocator_p->mem_peak = 0;
     allocator_p->mem_limit = mem_limit;
+#if O71_CHECKED
+    allocator_p->list.next_p = &allocator_p->list;
+    allocator_p->list.prev_p = &allocator_p->list;
+#endif
     return allocator_p;
 }
 
@@ -2573,8 +2583,8 @@ O71_API o71_status_t o71_reg_class_create
 /* o71_compile **************************************************************/
 O71_API o71_status_t o71_compile
 (
+    o71_world_t * world_p,
     o71_code_t * code_p,
-    o71_allocator_t * allocator_p,
     char const * src_name,
     uint8_t const * src_a,
     size_t src_n
@@ -2584,7 +2594,7 @@ O71_API o71_status_t o71_compile
     o71_token_t * crt_token_p;
     o71_token_t * stmt_token_p;
 
-    code_p->allocator_p = allocator_p;
+    code_p->allocator_p = world_p->allocator_p;
     code_p->src_name = src_name;
     code_p->src_a = src_a;
     code_p->src_n = src_n;
@@ -2595,165 +2605,7 @@ O71_API o71_status_t o71_compile
     if (os) return os;
 
     code_p->ce_ofs = 0;
-
-    code_p->stmt_list = NULL;
-    code_p->token_tail = &code_p->stmt_list;
-    for (crt_token_p = code_p->token_list; crt_token_p->type != O71_TT_END;)
-    {
-        os = match_stmt(code_p, crt_token_p, code_p->token_tail);
-        if (os) return os;
-        (*code_p->token_tail)->next = NULL;
-        code_p->token_tail = &(*code_p->token_tail)->next;
-    }
-
     return O71_OK;
-}
-
-/* match_stmt ***************************************************************/
-static o71_status_t match_stmt
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * stmt_pp
-)
-{
-    o71_token_t * lookup_p;
-    o71_token_t * expr_p;
-    o71_expr_stmt_token_t * expr_stmt_p;
-    o71_status_t os;
-
-    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
-    A(in_p->type != O71_TT_END);
-    switch (in_p->type)
-    {
-    case O71_TT_IF:
-        return O71_TODO;
-    case O71_TT_FOR:
-        return O71_TODO;
-    case O71_TT_WHILE:
-        return O71_TODO;
-    case O71_TT_RETURN:
-        return O71_TODO;
-    case O71_TT_DO:
-        return O71_TODO;
-    case O71_TT_BREAK:
-        return O71_TODO;
-    case O71_TT_GOTO:
-        return O71_TODO;
-    case O71_TT_CASE:
-        return O71_TODO;
-    case O71_TT_SWITCH:
-        return O71_TODO;
-    case O71_TT_CURLY_BRACKET_OPEN:
-        return O71_TODO;
-    default:
-        os = match_expr(code_p, in_p, &expr_p);
-        if (os) return os;
-        lookup_p = expr_p->next;
-        switch (lookup_p->type)
-        {
-        case O71_TT_SEMICOLON:
-            ALLOC(os, code_p->allocator_p, expr_stmt_p);
-            if (os) return os;
-            return O71_TODO;
-        case O71_TT_IDENTIFIER:
-            return O71_TODO;
-        default:
-            code_p->ce_code = O71_CE_BAD_STMT_AFTER_EXPR;
-            code_p->ce_row = lookup_p->src_row;
-            code_p->ce_col = lookup_p->src_col;
-            code_p->ce_ofs = lookup_p->src_ofs;
-            return O71_COMPILE_ERROR;
-        }
-        return O71_TODO;
-    };
-}
-
-/* match_cond_expr **********************************************************/
-static o71_status_t match_cond_expr
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * expr_pp
-)
-{
-    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
-    return O71_TODO;
-}
-
-/* match_atom_expr **********************************************************/
-static o71_status_t match_atom_expr
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * expr_pp
-)
-{
-    o71_unary_expr_token_t * atom_p;
-    o71_status_t os;
-    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
-    switch (in_p->type)
-    {
-    case O71_TT_IDENTIFIER:
-        //ALLOC(os, code_p->allocator_p, atom_p);
-        //if (os) return os;
-        //atom_p->base->next = in_p->next;
-        //atom_p->base->src_ofs = in_p->src_ofs;
-        //atom_p->base->src_len = in_p->src_len;
-        //atom_p->base->src_row = in_p->src_row;
-        //atom_p->base->src_col = in_p->src_col;
-        //atom_p->base->type = O71_TT_ATOM_EXPR;
-        //atom_p->base->base_type = O71_TT_IDENTIFIER;
-        return O71_TODO;
-    case O71_TT_STRING:
-        return O71_TODO;
-    case O71_TT_INTEGER:
-        return O71_TODO;
-    case O71_TT_PAREN_OPEN:
-        return O71_TODO;
-    }
-    return O71_TODO;
-}
-
-/* match_postfix_expr *******************************************************/
-static o71_status_t match_postfix_expr
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * expr_pp
-)
-{
-    o71_token_t * lookup_p, * atom_p;
-    o71_status_t os;
-    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
-    for (;;)
-    {
-        lookup_p = in_p->next;
-        if (in_p->type == O71_TT_POSTFIX_EXPR)
-        {
-            return O71_TODO;
-        }
-        os = match_atom_expr(code_p, in_p, &atom_p);
-        if (os) return os;
-        atom_p->type = O71_TT_POSTFIX_EXPR;
-        (void) lookup_p;
-    }
-
-    return O71_TODO;
-}
-
-/* match_expr ***************************************************************/
-static o71_status_t match_expr
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * expr_pp
-)
-{
-    o71_status_t os;
-    MP("tokens: "); dump_token_list(in_p, 3); P("\n");
-
-    return O71_TODO;
 }
 
 /* o71_code_free ************************************************************/
@@ -2788,13 +2640,16 @@ static uint8_t log2_rounded_up
 }
 
 /* redim ********************************************************************/
-static o71_status_t redim
+static o71_status_t redim_func
 (
     o71_allocator_t * allocator_p,
     void * * data_pp,
     size_t * crt_count_p,
     size_t new_count,
     size_t item_size
+#if O71_CHECKED
+    , char const * func, unsigned int line
+#endif
 )
 {
     size_t old_count;
@@ -4764,7 +4619,6 @@ static o71_status_t free_token
     o71_status_t os;
     unsigned int i;
     o71_str_token_t * str_token_p;
-    o71_expr_stmt_token_t * expr_stmt_p;
     o71_unary_expr_token_t * unary_expr_p;
     o71_binary_expr_token_t * binary_expr_p;
     o71_cond_expr_token_t * cond_expr_p;
@@ -4777,10 +4631,6 @@ static o71_status_t free_token
         str_token_p = (o71_str_token_t *) token_p;
         FREE_ARRAY(code_p->allocator_p, str_token_p->a, str_token_p->n);
         return O71_OK;
-    case O71_TT_STMT:
-        expr_stmt_p = (o71_expr_stmt_token_t *) token_p;
-        os = free_token(code_p, expr_stmt_p->expr_p, min_tt);
-        return os;
     case O71_TT_ATOM_EXPR:
     case O71_TT_POSTFIX_EXPR:
     case O71_TT_PREFIX_EXPR:
@@ -5343,7 +5193,6 @@ static void dump_token_list
         printf("%s%*s", ttname_a[token_p->type], (int) !!n, "");
 }
 
-
 #endif
 
 /* O71_MAIN *****************************************************************/
@@ -5783,12 +5632,16 @@ static int run_script (int ac, char const * const * av)
     int rv = ERR_RUN;
     o71_code_t code;
     o71_allocator_t allocator;
+    o71_world_t world;
     char msg[0x800];
 
-    o71_allocator_init(&allocator, mem_realloc, NULL, SIZE_MAX);
 #define E(...) { fprintf(stderr, "error: " __VA_ARGS__); fprintf(stderr, "\n");  break; }
     do
     {
+        o71_allocator_init(&allocator, mem_realloc, NULL, SIZE_MAX);
+        os = o71_world_init(&world, &allocator);
+        if (os) 
+            E("could not init scripting world (status: %s)", o71_status_name(os));
         src_name = av[0];
         f = fopen(src_name, "rb");
         if (!f) E("could not open script file '%s'", src_name);
@@ -5805,7 +5658,7 @@ static int run_script (int ac, char const * const * av)
               src_size, src_name);
         fclose(f);
         f = NULL;
-        os = o71_compile(&code, &allocator, src_name, src_a, src_size);
+        os = o71_compile(&world, &code, src_name, src_a, src_size);
         if (os)
         {
             if (os == O71_COMPILE_ERROR)
