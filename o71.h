@@ -215,7 +215,6 @@ typedef struct o71_func_token_s o71_func_token_t;
 typedef struct o71_stmt_list_token_s o71_stmt_list_token_t;
 typedef struct o71_block_stmt_token_s o71_block_stmt_token_t;
 typedef struct o71_alloc_header_s o71_alloc_header_t;
-typedef struct o71_alloc_footer_s o71_alloc_footer_t;
 
 /* o71_ref_t ****************************************************************/
 /**
@@ -305,6 +304,12 @@ typedef o71_status_t (* o71_cmp_f)
         o71_ref_t b_r,
         void * ctx
     );
+
+typedef union
+{
+    uint8_t u8[4];
+    uint32_t u32;
+} o71_4u8_t;
 
 struct o71_mem_obj_s
 {
@@ -526,13 +531,8 @@ struct o71_alloc_header_s
     o71_alloc_header_t * prev_p;
     size_t size;
     char const * func;
-    uintptr_t line;
-    uintptr_t tag;
-};
-
-struct o71_alloc_footer_s
-{
-    uintptr_t tag;
+    uint32_t line;
+    uint32_t tag;
 };
 
 struct o71_allocator_s

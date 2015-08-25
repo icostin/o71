@@ -2652,9 +2652,18 @@ static o71_status_t redim_func
 #endif
 )
 {
-    size_t old_count;
+    size_t old_count, osize, nsize;
     o71_status_t os;
-    if (new_count > SIZE_MAX / item_size) return O71_ARRAY_LIMIT;
+#define AHF (sizeof(o71_alloc_header_t) + 4)
+#if O71_CHECKED
+    o71_alloc_header_t * ah = *data_pp;
+    o71_alloc_header_t * ahp, * ahn;
+    uint32_t tag;
+    uint8_t * ftag;
+    o71_4u8_t gtag;
+#endif
+    A(item_size);
+    if (new_count > (SIZE_MAX - AHF) / item_size) return O71_ARRAY_LIMIT;
     old_count = *crt_count_p;
     if (new_count > old_count
         && (new_count - old_count) * item_size
@@ -2663,6 +2672,101 @@ static o71_status_t redim_func
         M("reached mem limit");
         return O71_MEM_LIMIT;
     }
+#if O71_CHECKED
+    if (old_count)
+    {
+        --ah;
+        if (ah->allocator_p != allocator_p)
+        {
+            M("bad allocator: %p instead of %p", ah->allocator_p, allocator_p);
+            return O71_BUG;
+        }
+        if (old_count * item_size != ah->size)
+        {
+            M("bad old size");
+            return O71_BUG;
+        }
+        tag = (uint32_t) (uintptr_t) *data_pp ^ 0xA5A5A5A5;
+        if (ah->tag != tag)
+        {
+            M("corrupt block %p from %s():%u", *data_pp, ah->func, ah->line);
+            return O71_BUG;
+        }
+        ftag = (uint8_t *) *data_pp + old_count * item_size;
+        gtag.u8[0] = ftag[0];
+        gtag.u8[1] = ftag[1];
+        gtag.u8[2] = ftag[2];
+        gtag.u8[3] = ftag[3];
+        if (gtag.u32 != tag)
+        {
+            M("corrupt block %p from %s():%u", *data_pp, ah->func, ah->line);
+            return O71_BUG;
+        }
+        if (!new_count)
+        {
+            ahn = ah->next_p;
+            ahp = ah->prev_p;
+            ahn->prev_p = ahp;
+            ahp->next_p = ahn;
+        }
+        osize = AHF + old_count * item_size;
+    }
+    else osize = 0;
+    ah = *data_pp; --ah;
+    if (new_count)
+    {
+        nsize = AHF + new_count * item_size;
+        os = allocator_p->realloc((void * *) &ah, osize, nsize, 
+                                  allocator_p->context);
+        A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
+        if (os)
+        {
+            M("realloc failed: %u", os);
+            return os;
+        }
+        *data_pp = (void *) (ah + 1);
+        ah->allocator_p = allocator_p;
+        if (osize)
+        {
+            ah->next_p->prev_p = ah;
+            ah->prev_p->next_p = ah;
+        }
+        else
+        {
+            ahp = allocator_p->list.prev_p;
+            ahp->next_p = ah;
+            allocator_p->list.prev_p = ah;
+            ah->prev_p = ahp;
+            ah->next_p = &allocator_p->list;
+        }
+
+
+        ah->size = new_count * item_size;
+        ah->func = func;
+        ah->line = line;
+        tag = (uint32_t) (uintptr_t) *data_pp ^ 0xA5A5A5A5;
+        ah->tag = tag;
+        gtag.u32 = tag;
+        ftag = (uint8_t *) *data_pp + new_count * item_size;
+        ftag[0] = gtag.u8[0];
+        ftag[1] = gtag.u8[1];
+        ftag[2] = gtag.u8[2];
+        ftag[3] = gtag.u8[3];
+    }
+    else
+    {
+        os = allocator_p->realloc((void * *) &ah, osize, 0, 
+                                  allocator_p->context);
+        A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
+        if (os)
+        {
+            M("realloc failed: %u", os);
+            return os;
+        }
+
+    }
+
+#else
     os = allocator_p->realloc(data_pp, old_count * item_size,
                               new_count * item_size, allocator_p->context);
     A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
@@ -2671,6 +2775,8 @@ static o71_status_t redim_func
         M("realloc failed: %u", os);
         return os;
     }
+#endif
+
     /* allocated block must be pointer aligned */
     A(((uintptr_t) *data_pp & (sizeof(uintptr_t) - 1)) == 0);
     *crt_count_p = new_count;
@@ -5638,6 +5744,7 @@ static int run_script (int ac, char const * const * av)
 #define E(...) { fprintf(stderr, "error: " __VA_ARGS__); fprintf(stderr, "\n");  break; }
     do
     {
+        code.src_a = NULL;
         o71_allocator_init(&allocator, mem_realloc, NULL, SIZE_MAX);
         os = o71_world_init(&world, &allocator);
         if (os) 
