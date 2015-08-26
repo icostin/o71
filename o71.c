@@ -1099,6 +1099,31 @@ O71_API o71_allocator_t * o71_allocator_init
     return allocator_p;
 }
 
+/* o71_allocator_finish *****************************************************/
+O71_API void o71_allocator_finish
+(
+    o71_allocator_t * allocator_p
+)
+{
+#if O71_DEBUG
+    o71_alloc_header_t * ah;
+    if (!allocator_p->mem_usage) return;
+    M("leaked mem: %zu bytes", allocator_p->mem_usage);
+    for (ah = allocator_p->list.next_p; 
+         ah != &allocator_p->list;
+         ah = ah->next_p)
+    {
+        M("p=%p s=0x%04zX %s():%u %02X %02X %02X %02X",
+          ah + 1, ah->size, ah->func, ah->line,
+          ((uint8_t *) (ah + 1))[0],
+          ((uint8_t *) (ah + 1))[1],
+          ((uint8_t *) (ah + 1))[2],
+          ((uint8_t *) (ah + 1))[3]);
+    }
+
+#endif
+}
+
 /* o71_world_init ***********************************************************/
 O71_API o71_status_t o71_world_init
 (
@@ -5676,7 +5701,7 @@ static int test ()
                 o71_status_name(os));
         return ERR_RUN;
     }
-
+    o71_allocator_finish(&allocator);
     printf("self test %s!\n", rc ? "FAILED" : "passed");
     return rc;
 }
@@ -5782,9 +5807,12 @@ static int run_script (int ac, char const * const * av)
     }
     while (0);
 #undef E
+    os = o71_world_finish(&world);
+    if (os) rv = ERR_BUG;
     if (f) fclose(f);
     if (code.src_a) o71_code_free(&code);
     if (src_a) free(src_a);
+    o71_allocator_finish(&allocator);
     return rv;
 }
 

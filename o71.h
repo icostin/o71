@@ -837,6 +837,12 @@ O71_API o71_allocator_t * o71_allocator_init
     size_t mem_limit
 );
 
+/* o71_allocator_finish *****************************************************/
+O71_API void o71_allocator_finish
+(
+    o71_allocator_t * allocator_p
+);
+
 /* o71_world_init ***********************************************************/
 /**
  *  @retval O71_OK
