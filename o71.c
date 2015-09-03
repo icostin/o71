@@ -272,6 +272,16 @@ o71_status_t noop_object_finish
     o71_ref_t obj_r
 );
 
+/*  class_finish  */
+/**
+ *  Finishes class.
+ */
+o71_status_t class_finish
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r
+);
+
 /*  get_missing_field  */
 /**
  *  @retval O71_MISSING
@@ -449,6 +459,17 @@ static void kvbag_init
     uint8_t array_limit
 );
 
+/*  kvbag_free  */
+/**
+ *  Frees kvbag.
+ */
+static o71_status_t kvbag_free
+(
+    o71_world_t * world_p,
+    o71_kvbag_t * kvbag_p,
+    o71_kv_free_f kv_free
+);
+
 /*  kvbag_array_search  */
 /**
  *
@@ -465,13 +486,24 @@ static o71_status_t kvbag_array_search
 
 /*  kvbag_array_delete  */
 /**
- *
+ *  Deletes a single item
  */
 static o71_status_t kvbag_array_delete
 (
     o71_world_t * world_p,
     o71_kvbag_t * kvbag_p,
     o71_kvbag_loc_t * loc_p
+);
+
+/*  kvbag_array_free  */
+/**
+ *  Finishes kvbag array.
+ */
+static o71_status_t kvbag_array_free
+(
+    o71_world_t * world_p,
+    o71_kvbag_t * kvbag_p,
+    o71_kv_free_f kv_free
 );
 
 /*  kvbag_rbtree_search  */
@@ -521,7 +553,8 @@ static o71_status_t kvbag_rbtree_multi_add
 static o71_status_t kvbag_rbtree_free
 (
     o71_world_t * world_p,
-    o71_kvnode_t * kvnode_p
+    o71_kvnode_t * kvnode_p,
+    o71_kv_free_f kv_free
 );
 
 /*  kvbag_rbtree_node_alloc  */
@@ -541,7 +574,8 @@ static o71_status_t kvbag_rbtree_node_alloc
 static o71_status_t kvbag_rbtree_node_free
 (
     o71_world_t * world_p,
-    o71_kvnode_t * kvnode_p
+    o71_kvnode_t * kvnode_p,
+    o71_kv_free_f kv_free
 );
 
 /*  kvbag_search  */
@@ -590,6 +624,13 @@ static o71_kvnode_t * kvbag_rbtree_np
 (
     o71_kvbag_loc_t * loc_p,
     unsigned int side
+);
+
+static o71_status_t kvbag_rbtree_finish
+(
+    o71_world_t * world_p,
+    o71_kvbag_t * kvbag_p,
+    o71_kv_free_f kv_free
 );
 
 /* kvbag_insert */
@@ -675,6 +716,10 @@ static o71_status_t kvbag_put
     o71_cmp_f cmp,
     void * ctx
 );
+
+static o71_status_t kv_nop_free (o71_world_t * world_p, o71_kv_t * kv_p);
+static o71_status_t kv_free_key_deref (o71_world_t * world_p, o71_kv_t * kv_p);
+static o71_status_t deref_key_and_value (o71_world_t * world_p, o71_kv_t * kv_p);
 
 /*  merge_sorted_refs  */
 /**
@@ -1113,7 +1158,7 @@ O71_API void o71_allocator_finish
          ah != &allocator_p->list;
          ah = ah->next_p)
     {
-        M("p=%p s=0x%04zX %s():%u %02X %02X %02X %02X",
+        P("p=%p s=0x%04zX %s():%u %02X %02X %02X %02X\n",
           ah + 1, ah->size, ah->func, ah->line,
           ((uint8_t *) (ah + 1))[0],
           ((uint8_t *) (ah + 1))[1],
@@ -1193,7 +1238,7 @@ O71_API o71_status_t o71_world_init
 
     world_p->class_class.hdr.class_r = O71R_CLASS_CLASS;
     world_p->class_class.hdr.ref_n = 1;
-    world_p->class_class.finish = noop_object_finish;
+    world_p->class_class.finish = class_finish;
     world_p->class_class.get_field = get_missing_field;
     world_p->class_class.set_field = set_missing_field;
     world_p->class_class.object_size = sizeof(o71_class_t);
@@ -1389,7 +1434,7 @@ O71_API o71_status_t o71_world_init
         os = redim(world_p->allocator_p,
                    (void * *) &world_p->exception_class.fix_field_ofs_a,
                    &world_p->exception_class.fix_field_n,
-                   1, sizeof(o71_ref_t));
+                   1, sizeof(o71_kv_t));
         if (os) { M("fail: %s", N(os)); break; }
         world_p->exception_class.fix_field_ofs_a[0].key_r = exe_ctx_isr;
         world_p->exception_class.fix_field_ofs_a[0].value_r =
@@ -1440,7 +1485,11 @@ O71_API o71_status_t o71_world_finish
     os = redim(world_p->allocator_p,
                (void * *) &world_p->obj_pa, &world_p->obj_n, 0,
                sizeof(void *));
-    if (os) return os;
+    if (os) { M("oops: %s", N(os)); return os; }
+
+    os = kvbag_free(world_p, &world_p->istr_bag, kv_nop_free);
+    if (os) { M("oops: %s", N(os)); return os; }
+
     M("goodbye cruel world %p!", world_p);
     return O71_OK;
 }
@@ -2708,7 +2757,8 @@ static o71_status_t redim_func
         }
         if (old_count * item_size != ah->size)
         {
-            M("bad old size");
+            M("bad old size: p=%p (%s():%u), recorded size 0x%zX, specified size: 0x%zX",
+              ah + 1, ah->func, ah->line, ah->size, old_count * item_size);
             return O71_BUG;
         }
         tag = (uint32_t) (uintptr_t) *data_pp ^ 0xA5A5A5A5;
@@ -2729,6 +2779,9 @@ static o71_status_t redim_func
         }
         if (!new_count)
         {
+            M("removing allocated block %p (%s():%u) from list before freeing", 
+              *data_pp, ah->func, ah->line);
+
             ahn = ah->next_p;
             ahp = ah->prev_p;
             ahn->prev_p = ahp;
@@ -2741,6 +2794,7 @@ static o71_status_t redim_func
     if (new_count)
     {
         nsize = AHF + new_count * item_size;
+        M("reallocating %p (osize=0x%zX, nsize=0x%zX)", *data_pp, old_count * item_size, new_count * item_size);
         os = allocator_p->realloc((void * *) &ah, osize, nsize, 
                                   allocator_p->context);
         A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
@@ -2753,6 +2807,8 @@ static o71_status_t redim_func
         ah->allocator_p = allocator_p;
         if (osize)
         {
+            M("realloc fine, updating links for %p (%s():%u)", 
+              *data_pp, ah->func, ah->line);
             ah->next_p->prev_p = ah;
             ah->prev_p->next_p = ah;
         }
@@ -2763,12 +2819,11 @@ static o71_status_t redim_func
             allocator_p->list.prev_p = ah;
             ah->prev_p = ahp;
             ah->next_p = &allocator_p->list;
-        }
-
-
-        ah->size = new_count * item_size;
         ah->func = func;
         ah->line = line;
+        }
+
+        ah->size = new_count * item_size;
         tag = (uint32_t) (uintptr_t) *data_pp ^ 0xA5A5A5A5;
         ah->tag = tag;
         gtag.u32 = tag;
@@ -2785,7 +2840,7 @@ static o71_status_t redim_func
         A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
         if (os)
         {
-            M("realloc failed: %u", os);
+            M("free failed: %u", os);
             return os;
         }
 
@@ -2803,7 +2858,8 @@ static o71_status_t redim_func
 #endif
 
     /* allocated block must be pointer aligned */
-    A(((uintptr_t) *data_pp & (sizeof(uintptr_t) - 1)) == 0);
+    //M("p=%p", *data_pp);
+    A(!new_count || ((uintptr_t) *data_pp & (sizeof(uintptr_t) - 1)) == 0);
     *crt_count_p = new_count;
     allocator_p->mem_usage += (new_count - old_count) * item_size;
     if (allocator_p->mem_usage > allocator_p->mem_peak)
@@ -3020,6 +3076,46 @@ o71_status_t noop_object_finish
 {
     M2("finished obref_%lX", (long) obj_r);
     return O71_OK;
+}
+
+/* class_finish *************************************************************/
+o71_status_t class_finish
+(
+    o71_world_t * world_p,
+    o71_ref_t class_r
+)
+{
+    o71_status_t os;
+    o71_class_t * class_p;
+    size_t i;
+
+    M("class finish");
+    /* get class object */
+    class_p = world_p->obj_pa[O71_REF_TO_MOX(class_r)];
+
+    /* deref all superclasses */
+    for (i = 0; i < class_p->super_n; ++i)
+    {
+        os = o71_deref(world_p, class_p->super_ra[i]);
+        AOS(os);
+    }
+    /* free superclasses array */
+    FREE_ARRAY(world_p->allocator_p, class_p->super_ra, class_p->super_n);
+
+    /* deref all fixed fields */
+    for (i = 0; i < class_p->fix_field_n; ++i)
+    {
+        os = o71_deref(world_p, class_p->fix_field_ofs_a[i].key_r);
+        AOS(os);
+    }
+    /* free fixed fields array */
+    FREE_ARRAY(world_p->allocator_p, class_p->fix_field_ofs_a, class_p->fix_field_n);
+
+    /* free method bag */
+    os = kvbag_free(world_p, &class_p->method_bag, deref_key_and_value);
+    AOS(os);
+
+    return os;
 }
 
 /* alloc_exc ****************************************************************/
@@ -3723,6 +3819,27 @@ static void kvbag_init
     kvbag_p->mode = O71_BAG_ARRAY;
 }
 
+
+/* kvbag_free *************************************************************/
+static o71_status_t kvbag_free
+(
+    o71_world_t * world_p,
+    o71_kvbag_t * kvbag_p,
+    o71_kv_free_f kv_free
+)
+{
+    o71_status_t os;
+    if (kvbag_p->mode == O71_BAG_ARRAY) 
+        os = kvbag_array_free(world_p, kvbag_p, kv_free);
+    else
+    {
+        A(kvbag_p->mode == O71_BAG_RBTREE);
+        os = kvbag_rbtree_free(world_p, kvbag_p->tree_p, kv_free);
+    }
+
+    return os;
+}
+
 #if O71_DEBUG
 /* kvbag_dump ***************************************************************/
 static void kvbag_dump
@@ -3824,7 +3941,7 @@ static o71_status_t kvbag_insert
                     if (kvbag_p->tree_p)
                     {
                         o71_status_t osf;
-                        osf = kvbag_rbtree_free(world_p, kvbag_p->tree_p);
+                        osf = kvbag_rbtree_free(world_p, kvbag_p->tree_p, kv_nop_free);
                         if (osf) return osf;
                     }
 
@@ -3923,10 +4040,14 @@ static o71_status_t kvbag_rbtree_node_alloc
 static o71_status_t kvbag_rbtree_node_free
 (
     o71_world_t * world_p,
-    o71_kvnode_t * kvnode_p
+    o71_kvnode_t * kvnode_p,
+    o71_kv_free_f kv_free
 )
 {
     size_t n = 1;
+    o71_status_t os;
+    os = kv_free(world_p, &kvnode_p->kv);
+    AOS(os);
     return redim(world_p->allocator_p, (void * *) &kvnode_p, &n, 0,
                  sizeof(o71_kvnode_t));
 }
@@ -3935,22 +4056,23 @@ static o71_status_t kvbag_rbtree_node_free
 static o71_status_t kvbag_rbtree_free
 (
     o71_world_t * world_p,
-    o71_kvnode_t * kvnode_p
+    o71_kvnode_t * kvnode_p,
+    o71_kv_free_f kv_free
 )
 {
     o71_status_t os;
     A(kvnode_p);
     if (kvnode_p->clr[0])
     {
-        os = kvbag_rbtree_free(world_p, GET_CHILD(kvnode_p, 0));
+        os = kvbag_rbtree_free(world_p, GET_CHILD(kvnode_p, 0), kv_free);
         if (os) return os;
     }
     if (kvnode_p->clr[1])
     {
-        os = kvbag_rbtree_free(world_p, GET_CHILD(kvnode_p, 1));
+        os = kvbag_rbtree_free(world_p, GET_CHILD(kvnode_p, 1), kv_free);
         if (os) return os;
     }
-    return kvbag_rbtree_node_free(world_p, kvnode_p);
+    return kvbag_rbtree_node_free(world_p, kvnode_p, kv_free);
 }
 
 #if O71_DEBUG
@@ -4204,6 +4326,26 @@ static o71_status_t kvbag_array_delete
     return O71_OK;
 }
 
+/* kvbag_array_free *******************************************************/
+static o71_status_t kvbag_array_free
+(
+    o71_world_t * world_p,
+    o71_kvbag_t * kvbag_p,
+    o71_kv_free_f kv_free
+)
+{
+    unsigned int i;
+    o71_status_t os;
+    size_t m;
+    for (i = 0; i < kvbag_p->n; ++i)
+    {
+        os = kv_free(world_p, kvbag_p->kv_a + i);
+        AOS(os);
+    }
+    m = kvbag_p->m;
+    FREE_ARRAY(world_p->allocator_p, kvbag_p->kv_a, m);
+    return O71_OK;
+}
 
 /* kvbag_rbtree_search ******************************************************/
 static o71_status_t kvbag_rbtree_search
@@ -4428,7 +4570,7 @@ static o71_status_t kvbag_rbtree_delete
         }
     }
     while (0);
-    kvbag_rbtree_node_free(world_p, o);
+    kvbag_rbtree_node_free(world_p, o, kv_nop_free);
     return O71_OK;
 }
 
@@ -4750,6 +4892,8 @@ static o71_status_t free_token
     o71_status_t os;
     unsigned int i;
     o71_str_token_t * str_token_p;
+    o71_id_token_t * id_token_p;
+    o71_int_token_t * int_token_p;
     o71_unary_expr_token_t * unary_expr_p;
     o71_binary_expr_token_t * binary_expr_p;
     o71_cond_expr_token_t * cond_expr_p;
@@ -4761,13 +4905,24 @@ static o71_status_t free_token
     case O71_TT_STRING:
         str_token_p = (o71_str_token_t *) token_p;
         FREE_ARRAY(code_p->allocator_p, str_token_p->a, str_token_p->n);
-        return O71_OK;
+        FREE(code_p->allocator_p, str_token_p);
+        break;
+    case O71_TT_IDENTIFIER:
+        id_token_p = (o71_id_token_t *) token_p;
+        FREE(code_p->allocator_p, id_token_p);
+        break;
+    case O71_TT_INTEGER:
+        int_token_p = (o71_int_token_t *) token_p;
+        FREE(code_p->allocator_p, int_token_p);
+        break;
     case O71_TT_ATOM_EXPR:
     case O71_TT_POSTFIX_EXPR:
     case O71_TT_PREFIX_EXPR:
         unary_expr_p = (o71_unary_expr_token_t *) token_p;
         os = free_token(code_p, unary_expr_p->sub_expr_p, min_tt);
-        return os;
+        if (os) return (os);
+        FREE(code_p->allocator_p, unary_expr_p);
+        break;
     case O71_TT_EXP_EXPR:
     case O71_TT_AND_EXPR:
     case O71_TT_OR_EXPR:
@@ -4784,8 +4939,9 @@ static o71_status_t free_token
         os = free_token(code_p, binary_expr_p->sub_expr_pa[0], min_tt);
         if (os) return (os);
         os = free_token(code_p, binary_expr_p->sub_expr_pa[1], min_tt);
-        return os;
-
+        if (os) return (os);
+        FREE(code_p->allocator_p, unary_expr_p);
+        break;
     case O71_TT_COND_EXPR:
         cond_expr_p = (o71_cond_expr_token_t *) token_p;
         os = free_token(code_p, cond_expr_p->sub_expr_pa[0], min_tt);
@@ -4793,9 +4949,12 @@ static o71_status_t free_token
         os = free_token(code_p, cond_expr_p->sub_expr_pa[1], min_tt);
         if (os) return (os);
         os = free_token(code_p, cond_expr_p->cond_p, min_tt);
-        return os;
+        if (os) return (os);
+        FREE(code_p->allocator_p, cond_expr_p);
+        break;
 
     default:
+        FREE(code_p->allocator_p, token_p);
         break;
     }
     return O71_OK;
@@ -5326,6 +5485,31 @@ static void dump_token_list
 
 #endif
 
+/* kv_nop_free **************************************************************/
+static o71_status_t kv_nop_free (o71_world_t * world_p, o71_kv_t * kv_p)
+{
+    return O71_OK;
+}
+
+/* kv_free_key_deref ********************************************************/
+static o71_status_t kv_free_key_deref (o71_world_t * world_p, o71_kv_t * kv_p)
+{
+    o71_status_t os;
+    os = o71_deref(world_p, kv_p->key_r);
+    return os;
+}
+
+/* deref_key_and_value ******************************************************/
+static o71_status_t deref_key_and_value (o71_world_t * world_p, o71_kv_t * kv_p)
+{
+    o71_status_t os;
+    os = o71_deref(world_p, kv_p->key_r);
+    AOS(os);
+    os = o71_deref(world_p, kv_p->value_r);
+    AOS(os);
+    return os;
+}
+
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN
 #include <string.h>
@@ -5480,6 +5664,7 @@ static int test ()
             size_t N = 50;
             o71_ref_t * ra;
             o71_ref_t l;
+#if 0
             c.super_ra = NULL;
             c.super_n = 0;
             os = redim(world.allocator_p, (void * *) &c.super_ra, &c.super_n, N,
@@ -5509,7 +5694,6 @@ static int test ()
                 if (ref_search(c.super_ra, c.super_n, l) < 0)
                     TE("error (line %u): did not find %lX", __LINE__, l);
             }
-
             for (i = 0, l = 1; i < n; ++i)
             {
                 l = (31409573 * l + 1) % (2 * N);
@@ -5520,8 +5704,9 @@ static int test ()
             os = redim(world.allocator_p, (void * *) &c.super_ra, &c.super_n, 0,
                        sizeof(o71_ref_t));
             if (os) TE("error (line %u): status: %s", __LINE__, N(os));
+#endif
         }
-
+#if 0
         os = o71_cstring(&world, &r, "first string");
         if (os) TE("error: failed to create first string object: %s",
                    o71_status_name(os));
@@ -5691,6 +5876,7 @@ static int test ()
                (long) world.root_flow.value_r);
 
         if ((rc = reg_obj_field_test(&world))) break;
+#endif
     }
     while (0);
 

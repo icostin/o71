@@ -305,6 +305,12 @@ typedef o71_status_t (* o71_cmp_f)
         void * ctx
     );
 
+typedef o71_status_t (*o71_kv_free_f)
+    (
+        o71_world_t * world_p,
+        o71_kv_t * kv_p
+    );
+
 typedef union
 {
     uint8_t u8[4];
