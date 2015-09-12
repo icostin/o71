@@ -803,7 +803,9 @@ struct o71_var_spec_s
 struct o71_block_stmt_token_s
 {
     o71_token_t base;
+    o71_block_stmt_token_t * parent_block_stmt_p;
     o71_stmt_list_token_t * stmt_list_p;
+    o71_stmt_list_token_t * * stmt_tail_pp;
     o71_var_spec_t * var_list_p;
     o71_var_spec_t * * var_tail_pp;
 };

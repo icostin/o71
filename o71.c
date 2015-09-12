@@ -836,6 +836,16 @@ static o71_status_t tokenize_source
     o71_code_t * code_p
 );
 
+/*  init_empty_block_stmt  */
+/**
+ *  Initializes an empty block statement.
+ */
+static void init_empty_block_stmt
+(
+    o71_block_stmt_token_t * block_stmt_p,
+    o71_block_stmt_token_t * parent_block_stmt_p
+);
+
 /*  match_stmt  */
 /**
  *  Matches a statement.
@@ -1154,7 +1164,7 @@ O71_API void o71_allocator_finish
     o71_alloc_header_t * ah;
     if (!allocator_p->mem_usage) return;
     M("leaked mem: %zu bytes", allocator_p->mem_usage);
-    for (ah = allocator_p->list.next_p; 
+    for (ah = allocator_p->list.next_p;
          ah != &allocator_p->list;
          ah = ah->next_p)
     {
@@ -1507,7 +1517,7 @@ O71_API o71_status_t o71_world_finish
     M("max rank: %u", rank);
     //os = o71_cleanup(world_p);
     //AOS(os);
-    
+
     free_head_x = ~0;
     free_tail_xp = &free_head_x;
     do
@@ -1682,7 +1692,7 @@ O71_API o71_status_t o71_deref
     /* chain the object to the destroy list */
     *world_p->free_list_tail_xp = ~obj_x;
     world_p->mem_obj_pa[obj_x]->destroy_next_ex = ~0;
-    world_p->free_list_tail_xp = 
+    world_p->free_list_tail_xp =
         &world_p->mem_obj_pa[obj_x]->destroy_next_ex;
     M2("obref_%lX.deref -> queue for destruction", (long) obj_r);
     //M("obj_x=%lX", (long) obj_x);
@@ -1723,7 +1733,7 @@ O71_API o71_status_t o71_cleanup
         os = o71_deref(world_p, mo_p->class_r);
         if (os)
         {
-            M("deref obj class(obref_%lX): %s", 
+            M("deref obj class(obref_%lX): %s",
               (long) mo_p->class_r, N(os));
             break;
         }
@@ -1759,7 +1769,7 @@ O71_API o71_status_t o71_cleanup
             return os;
         }
 #endif
-        
+
     }
 
     M("cleanup done");
@@ -2755,6 +2765,7 @@ O71_API o71_status_t o71_compile
     os = tokenize_source(code_p);
     if (os) return os;
 
+    init_empty_block_stmt(&code_p->body, NULL);
     code_p->ce_ofs = 0;
     return O71_OK;
 }
@@ -2855,7 +2866,7 @@ static o71_status_t redim_func
         }
         if (!new_count)
         {
-            M("removing allocated block %p (%s():%u) from list before freeing", 
+            M("removing allocated block %p (%s():%u) from list before freeing",
               *data_pp, ah->func, ah->line);
 
             ahn = ah->next_p;
@@ -2871,7 +2882,7 @@ static o71_status_t redim_func
     {
         nsize = AHF + new_count * item_size;
         M("reallocating %p (osize=0x%zX, nsize=0x%zX)", *data_pp, old_count * item_size, new_count * item_size);
-        os = allocator_p->realloc((void * *) &ah, osize, nsize, 
+        os = allocator_p->realloc((void * *) &ah, osize, nsize,
                                   allocator_p->context);
         A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
         if (os)
@@ -2883,7 +2894,7 @@ static o71_status_t redim_func
         ah->allocator_p = allocator_p;
         if (osize)
         {
-            M("realloc fine, updating links for %p (%s():%u)", 
+            M("realloc fine, updating links for %p (%s():%u)",
               *data_pp, ah->func, ah->line);
             ah->next_p->prev_p = ah;
             ah->prev_p->next_p = ah;
@@ -2911,7 +2922,7 @@ static o71_status_t redim_func
     }
     else
     {
-        os = allocator_p->realloc((void * *) &ah, osize, 0, 
+        os = allocator_p->realloc((void * *) &ah, osize, 0,
                                   allocator_p->context);
         A(os == O71_OK || os == O71_NO_MEM || os >= O71_FATAL);
         if (os)
@@ -3905,7 +3916,7 @@ static o71_status_t kvbag_free
 )
 {
     o71_status_t os;
-    if (kvbag_p->mode == O71_BAG_ARRAY) 
+    if (kvbag_p->mode == O71_BAG_ARRAY)
         os = kvbag_array_free(world_p, kvbag_p, kv_free);
     else
     {
@@ -5586,6 +5597,28 @@ static o71_status_t deref_key_and_value (o71_world_t * world_p, o71_kv_t * kv_p)
     return os;
 }
 
+/* init_empty_block_stmt ****************************************************/
+static void init_empty_block_stmt
+(
+    o71_block_stmt_token_t * block_stmt_p,
+    o71_block_stmt_token_t * parent_block_stmt_p
+)
+{
+    block_stmt_p->base.next = NULL;
+    block_stmt_p->base.src_ofs = 0;
+    block_stmt_p->base.src_len = 0;
+    block_stmt_p->base.src_row = 0;
+    block_stmt_p->base.src_col = 0;
+    block_stmt_p->base.type = O71_TT_BLOCK_STMT;
+    block_stmt_p->base.base_type = O71_TT_BLOCK_STMT;
+    block_stmt_p->parent_block_stmt_p = parent_block_stmt_p;
+    block_stmt_p->stmt_list_p = NULL;
+    block_stmt_p->stmt_tail_pp = &block_stmt_p->stmt_list_p;
+    block_stmt_p->var_list_p = NULL;
+    block_stmt_p->var_tail_pp = &block_stmt_p->var_list_p;
+}
+
+
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN
 #include <string.h>
@@ -6034,7 +6067,7 @@ static int run_script (int ac, char const * const * av)
         code.src_a = NULL;
         o71_allocator_init(&allocator, mem_realloc, NULL, SIZE_MAX);
         os = o71_world_init(&world, &allocator);
-        if (os) 
+        if (os)
             E("could not init scripting world (status: %s)", o71_status_name(os));
         src_name = av[0];
         f = fopen(src_name, "rb");
