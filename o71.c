@@ -19,7 +19,7 @@
 #define P(...) ((void) 0)
 #endif
 
-#if O71_DEBUG >= 2
+#if O71_DEBUG >= 1
 #define M2 M
 #else
 #define M2(...) ((void) 0)
@@ -1181,7 +1181,8 @@ O71_API o71_status_t o71_world_init
     world_p->allocator_p = allocator_p;
     world_p->flow_id_seed = 0;
     world_p->cleaning = 0;
-    world_p->free_list_head_x = 0;
+    world_p->free_list_head_ex = ~0;
+    world_p->free_list_tail_xp = &world_p->free_list_head_ex;
     world_p->destroy_list_head_x = 0;
     world_p->obj_pa = NULL;
     world_p->obj_n = 0;
@@ -1217,6 +1218,7 @@ O71_API o71_status_t o71_world_init
     world_p->object_class.set_field = set_missing_field;
     world_p->object_class.object_size = sizeof(o71_mem_obj_t);
     world_p->object_class.model = O71MI_MEM_OBJ;
+    world_p->object_class.rank = 1;
     world_p->object_class.super_ra = NULL;
     world_p->object_class.super_n = 0;
     world_p->object_class.dyn_field_ofs = 0;
@@ -1230,6 +1232,7 @@ O71_API o71_status_t o71_world_init
     world_p->null_class.set_field = set_missing_field;
     world_p->null_class.object_size = sizeof(o71_mem_obj_t);
     world_p->null_class.model = O71MI_MEM_OBJ;
+    world_p->null_class.rank = 1;
     world_p->null_class.super_ra = NULL;
     world_p->null_class.super_n = 0;
     world_p->null_class.dyn_field_ofs = 0;
@@ -1243,6 +1246,7 @@ O71_API o71_status_t o71_world_init
     world_p->class_class.set_field = set_missing_field;
     world_p->class_class.object_size = sizeof(o71_class_t);
     world_p->class_class.model = O71MI_CLASS;
+    world_p->class_class.rank = 0;
     world_p->class_class.super_ra = NULL;
     world_p->class_class.super_n = 0;
     world_p->class_class.dyn_field_ofs = 0;
@@ -1256,6 +1260,7 @@ O71_API o71_status_t o71_world_init
     world_p->string_class.set_field = set_missing_field;
     world_p->string_class.object_size = sizeof(o71_string_t);
     world_p->string_class.model = O71MI_STRING;
+    world_p->string_class.rank = 1;
     world_p->string_class.super_ra = NULL;
     world_p->string_class.super_n = 0;
     world_p->string_class.dyn_field_ofs = 0;
@@ -1269,6 +1274,7 @@ O71_API o71_status_t o71_world_init
     world_p->small_int_class.set_field = set_missing_field;
     world_p->small_int_class.object_size = 0; // not a memory object
     world_p->small_int_class.model = O71MI_SMALL_INT;
+    world_p->small_int_class.rank = 1;
     world_p->small_int_class.super_ra = NULL;
     world_p->small_int_class.super_n = 0;
     world_p->small_int_class.dyn_field_ofs = 0;
@@ -1282,6 +1288,7 @@ O71_API o71_status_t o71_world_init
     world_p->reg_obj_class.set_field = set_reg_obj_field;
     world_p->reg_obj_class.object_size = sizeof(o71_reg_obj_t);
     world_p->reg_obj_class.model = O71MI_MEM_OBJ;
+    world_p->reg_obj_class.rank = 1;
     world_p->reg_obj_class.super_ra = NULL;
     world_p->reg_obj_class.super_n = 0;
     world_p->reg_obj_class.dyn_field_ofs =
@@ -1296,6 +1303,7 @@ O71_API o71_status_t o71_world_init
     world_p->function_class.set_field = set_missing_field;
     world_p->function_class.object_size = sizeof(o71_function_t);
     world_p->function_class.model = O71MI_FUNCTION;
+    world_p->function_class.rank = 1;
     world_p->function_class.super_ra = NULL;
     world_p->function_class.super_n = 0;
     world_p->function_class.dyn_field_ofs = 0;
@@ -1309,6 +1317,7 @@ O71_API o71_status_t o71_world_init
     world_p->script_function_class.set_field = set_missing_field;
     world_p->script_function_class.object_size = sizeof(o71_script_function_t);
     world_p->script_function_class.model = O71MI_SCRIPT_FUNCTION;
+    world_p->script_function_class.rank = 1;
     world_p->script_function_class.super_ra = NULL;
     world_p->script_function_class.super_n = 0;
     world_p->script_function_class.dyn_field_ofs = 0;
@@ -1323,6 +1332,7 @@ O71_API o71_status_t o71_world_init
     world_p->exception_class.set_field = set_reg_obj_field;
     world_p->exception_class.object_size = sizeof(o71_exception_t);
     world_p->exception_class.model = O71MI_EXCEPTION;
+    world_p->exception_class.rank = 1;
     world_p->exception_class.super_ra = NULL;
     world_p->exception_class.super_n = 0;
     world_p->exception_class.dyn_field_ofs =
@@ -1338,6 +1348,7 @@ O71_API o71_status_t o71_world_init
     world_p->type_exc_class.set_field = set_missing_field;
     world_p->type_exc_class.object_size = sizeof(o71_exception_t);
     world_p->type_exc_class.model = O71MI_EXCEPTION;
+    world_p->type_exc_class.rank = 1;
     world_p->type_exc_class.super_ra = NULL;
     world_p->type_exc_class.super_n = 0;
     world_p->type_exc_class.dyn_field_ofs = 0;
@@ -1351,6 +1362,7 @@ O71_API o71_status_t o71_world_init
     world_p->arity_exc_class.set_field = set_missing_field;
     world_p->arity_exc_class.object_size = sizeof(o71_exception_t);
     world_p->arity_exc_class.model = O71MI_EXCEPTION;
+    world_p->arity_exc_class.rank = 1;
     world_p->arity_exc_class.super_ra = NULL;
     world_p->arity_exc_class.super_n = 0;
     world_p->arity_exc_class.dyn_field_ofs = 0;
@@ -1364,6 +1376,7 @@ O71_API o71_status_t o71_world_init
     world_p->int_add_func.cls.set_field = set_missing_field;
     world_p->int_add_func.cls.object_size = 0; // instances are not created
     world_p->int_add_func.cls.model = O71MI_FUNCTION;
+    world_p->int_add_func.cls.rank = 1;
     world_p->int_add_func.cls.super_ra = NULL;
     world_p->int_add_func.cls.super_n = 0;
     kvbag_init(&world_p->int_add_func.cls.method_bag, O71_METHOD_ARRAY_LIMIT);
@@ -1465,22 +1478,81 @@ O71_API o71_status_t o71_world_finish
 )
 {
     o71_status_t os;
-    o71_obj_index_t obj_x;
+    o71_obj_index_t obj_x, next_obj_x;
+    unsigned int rank;
+    o71_class_t * class_p;
+    o71_obj_index_t finish_head_x, free_head_x;
+    o71_obj_index_t * finish_tail_xp;
+    o71_obj_index_t * free_tail_xp;
 
     M("finishing world (obj_n=%lu)", world_p->obj_n);
-    for (obj_x = 1; obj_x < world_p->obj_n; ++obj_x)
+    finish_head_x = ~0;
+    finish_tail_xp = &finish_head_x;
+    for (obj_x = 1, rank = 0; obj_x < world_p->obj_n; ++obj_x)
     {
+        o71_mem_obj_t * obj_p;
         /* skip unused slots */
         if (IS_FREE_OBJECT_SLOT(world_p->obj_pa[obj_x])) continue;
         /* skip items already queued for destruction */
-        if (world_p->mem_obj_pa[obj_x]->ref_n < 0) continue;
-        world_p->mem_obj_pa[obj_x]->enc_destroy_next_x =
-            ~world_p->destroy_list_head_x;
-        world_p->destroy_list_head_x = obj_x;
-        M2("queueing for destruction: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
+        //if (world_p->mem_obj_pa[obj_x]->ref_n < 0) continue;
+        obj_p = world_p->mem_obj_pa[obj_x];
+        class_p = o71_obj_ptr(world_p, obj_p->class_r);
+        A(class_p);
+        if (class_p->rank > rank) rank = class_p->rank;
+        *finish_tail_xp = ~obj_x;
+        finish_tail_xp = &obj_p->destroy_next_ex;
+        M2("queueing for finish: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
     }
-    os = o71_cleanup(world_p);
-    AOS(os);
+    *finish_tail_xp = ~0;
+    M("max rank: %u", rank);
+    //os = o71_cleanup(world_p);
+    //AOS(os);
+    
+    free_head_x = ~0;
+    free_tail_xp = &free_head_x;
+    do
+    {
+        finish_tail_xp = &finish_head_x;
+        for (obj_x = ~finish_head_x; obj_x; obj_x = next_obj_x)
+        {
+            o71_mem_obj_t * obj_p;
+            obj_p = world_p->mem_obj_pa[obj_x];
+            next_obj_x = ~obj_p->destroy_next_ex;
+            class_p = o71_obj_ptr(world_p, obj_p->class_r);
+            A(class_p);
+            if (class_p->rank == rank)
+            {
+                os = class_p->finish(world_p, O71_MOX_TO_REF(obj_x));
+                M("obref_%lX(class:obref_%lX) finish: %s",
+                   (long) O71_MOX_TO_REF(obj_x), (long) obj_p->class_r, N(os));
+                if (os) break;
+                if (obj_x < O71X__COUNT) continue;
+                *free_tail_xp = ~obj_x;
+                free_tail_xp = &obj_p->destroy_next_ex;
+            }
+            else
+            {
+                *finish_tail_xp = ~obj_x;
+                finish_tail_xp = &obj_p->destroy_next_ex;
+            }
+        }
+        *finish_tail_xp = ~0;
+    }
+    while (rank--);
+    *free_tail_xp = ~0;
+
+    for (obj_x = ~free_head_x; obj_x; obj_x = next_obj_x)
+    {
+        o71_mem_obj_t * obj_p;
+        size_t obj_size;
+        obj_p = world_p->mem_obj_pa[obj_x];
+        next_obj_x = ~obj_p->destroy_next_ex;
+        class_p = o71_obj_ptr(world_p, obj_p->class_r);
+        A(class_p);
+        obj_size = class_p->object_size;
+        os = redim(world_p->allocator_p, (void * *) &obj_p, &obj_size, 0, 1);
+        AOS(os);
+    }
 
     os = redim(world_p->allocator_p,
                (void * *) &world_p->obj_pa, &world_p->obj_n, 0,
@@ -1608,9 +1680,10 @@ O71_API o71_status_t o71_deref
         return O71_OK;
     }
     /* chain the object to the destroy list */
-    world_p->mem_obj_pa[obj_x]->enc_destroy_next_x =
-        ~world_p->destroy_list_head_x;
-    world_p->destroy_list_head_x = obj_x;
+    *world_p->free_list_tail_xp = ~obj_x;
+    world_p->mem_obj_pa[obj_x]->destroy_next_ex = ~0;
+    world_p->free_list_tail_xp = 
+        &world_p->mem_obj_pa[obj_x]->destroy_next_ex;
     M2("obref_%lX.deref -> queue for destruction", (long) obj_r);
     //M("obj_x=%lX", (long) obj_x);
     return o71_cleanup(world_p);
@@ -1625,50 +1698,51 @@ O71_API o71_status_t o71_cleanup
     o71_mem_obj_t * mo_p;
     o71_class_t * class_p;
     o71_status_t os;
-    o71_obj_index_t obj_x;
-    o71_obj_index_t free_head_x = 0;
+    o71_obj_index_t obj_x, next_obj_x;
+    o71_obj_index_t free_head_x;
     size_t obj_size;
     if (world_p->cleaning) return O71_OK;
     world_p->cleaning = 1;
     M("cleanup start");
     os = O71_OK;
-    while ((obj_x = world_p->destroy_list_head_x))
+    os = 0;
+    for (obj_x = world_p->free_list_head_ex; obj_x; obj_x = next_obj_x)
     {
-        //M("obref_%lX", (long) O71_MOX_TO_REF(obj_x));
+        M("obref_%lX", (long) O71_MOX_TO_REF(obj_x));
         mo_p = world_p->mem_obj_pa[obj_x];
-        //M("mo_p = %p", mo_p);
-        world_p->destroy_list_head_x = ~mo_p->enc_destroy_next_x;
-        //M("next to destroy: %lX", (long) world_p->destroy_list_head_x);
-        //A(o71_model(world_p, mo_p->class_r) & O71M_CLASS);
-        /* get a pointer to the class; the class object might have been already
-         * finalized but it must keep the object_size and finish fields
-         * correct */
+        M("obref_%lX(class:obref_%lX)",
+           (long) O71_MOX_TO_REF(obj_x), (long) mo_p->class_r);
+        A(o71_model(world_p, mo_p->class_r) & O71M_CLASS);
         class_p = world_p->obj_pa[O71_REF_TO_MOX(mo_p->class_r)];
-        A(class_p); A(class_p->finish);
+        A(class_p);
+        A(class_p->finish);
         os = class_p->finish(world_p, O71_MOX_TO_REF(obj_x));
-        M2("obref_%lX(class:obref_%lX) finish: %s",
+        M("obref_%lX(class:obref_%lX) finish: %s",
            (long) O71_MOX_TO_REF(obj_x), (long) mo_p->class_r, N(os));
         if (os) break;
         os = o71_deref(world_p, mo_p->class_r);
         if (os)
         {
-            M("deref obj class(obref_%lX): %s", (long) mo_p->class_r, N(os));
+            M("deref obj class(obref_%lX): %s", 
+              (long) mo_p->class_r, N(os));
             break;
         }
+        next_obj_x = ~mo_p->destroy_next_ex;
         if (obj_x < O71X__COUNT) continue;
-        mo_p->object_size = class_p->object_size;
-        mo_p->enc_destroy_next_x = ~free_head_x;
-        free_head_x = obj_x;
-        M2("queue for mem free: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
+
+        M("queue for mem free: obref_%lX", (long) O71_MOX_TO_REF(obj_x));
     }
-    M("cleanup mem");
-    while (os == O71_OK && free_head_x)
+
+    M("cleanup object body mem");
+    for (obj_x = world_p->free_list_head_ex; obj_x; obj_x = next_obj_x)
     {
-        obj_x = free_head_x;
+        M("obref_%lX", (long) O71_MOX_TO_REF(obj_x));
         mo_p = world_p->mem_obj_pa[obj_x];
-        free_head_x = ~mo_p->enc_destroy_next_x;
-        //class_p = world_p->obj_pa[O71_REF_TO_MOX(mo_p->class_r)];
-        obj_size = mo_p->object_size;
+        next_obj_x = ~mo_p->destroy_next_ex;
+        A(o71_model(world_p, mo_p->class_r) & O71M_CLASS);
+        class_p = world_p->obj_pa[O71_REF_TO_MOX(mo_p->class_r)];
+        A(class_p);
+        obj_size = class_p->object_size;
         os = redim(world_p->allocator_p, world_p->obj_pa + obj_x, &obj_size, 0,
                    1);
         if (os)
@@ -1676,16 +1750,18 @@ O71_API o71_status_t o71_cleanup
             M("obj mem free failed: %s", N(os));
             break;
         }
-    os = free_object_index(world_p, obj_x);
+        os = free_object_index(world_p, obj_x);
 #if O71_CHECKED
-    if (os)
-    {
-        M("free_object_index(obref_%lX) failed: %s",
-          (long) O71_MOX_TO_REF(obj_x), N(os));
-        return os;
-    }
+        if (os)
+        {
+            M("free_object_index(obref_%lX) failed: %s",
+              (long) O71_MOX_TO_REF(obj_x), N(os));
+            return os;
+        }
 #endif
+        
     }
+
     M("cleanup done");
     world_p->cleaning = 0;
     return os;
@@ -1991,6 +2067,7 @@ O71_API o71_status_t o71_sfunc_create
     sfunc_p->func.cls.dyn_field_ofs = 0;
     sfunc_p->func.cls.fix_field_n = 0;
     sfunc_p->func.cls.model = O71MI_EXE_CTX;
+    sfunc_p->func.cls.rank = 2;
     sfunc_p->func.call = sfunc_call;
     sfunc_p->func.run = sfunc_run;
     sfunc_p->insn_a = NULL;
@@ -2700,7 +2777,6 @@ O71_API o71_status_t o71_code_free
     return O71_OK;
 }
 
-
 /* log2_rounded_up **********************************************************/
 static uint8_t log2_rounded_up
 (
@@ -2935,8 +3011,8 @@ static o71_status_t extend_object_table
     for (i = n; i < m; ++i)
         world_p->enc_next_free_xa[i] = ENCODE_FREE_OBJECT_SLOT(i + 1);
     //world_p->enc_next_free_xa[i] =
-    //    ENCODE_FREE_OBJECT_SLOT(world_p->free_list_head_x);
-    world_p->free_list_head_x = n;
+    //    ENCODE_FREE_OBJECT_SLOT(world_p->free_list_head_ex);
+    world_p->free_list_head_ex = n;
     return O71_OK;
 }
 
@@ -2948,21 +3024,21 @@ static o71_status_t alloc_object_index
 )
 {
     o71_status_t os;
-    if (world_p->free_list_head_x >= world_p->obj_n)
+    if (world_p->free_list_head_ex >= world_p->obj_n)
     {
-        //M("free list head index: %lX", world_p->free_list_head_x);
+        //M("free list head index: %lX", world_p->free_list_head_ex);
         //M("obj num: %lX", world_p->obj_n);
-        A(world_p->free_list_head_x == world_p->obj_n);
+        A(world_p->free_list_head_ex == world_p->obj_n);
         os = extend_object_table(world_p);
         if (os) return os;
     }
-    A(world_p->free_list_head_x < world_p->obj_n);
-    *obj_xp = world_p->free_list_head_x;
-    world_p->free_list_head_x = DECODE_FREE_OBJECT_SLOT(
-        world_p->enc_next_free_xa[world_p->free_list_head_x]);
+    A(world_p->free_list_head_ex < world_p->obj_n);
+    *obj_xp = world_p->free_list_head_ex;
+    world_p->free_list_head_ex = DECODE_FREE_OBJECT_SLOT(
+        world_p->enc_next_free_xa[world_p->free_list_head_ex]);
     M2("allocated=obref_%lX, free_head=obref_%lX, obj_n=%lX",
        (long) O71_MOX_TO_REF(*obj_xp),
-       (long) O71_MOX_TO_REF(world_p->free_list_head_x), (long) world_p->obj_n);
+       (long) O71_MOX_TO_REF(world_p->free_list_head_ex), (long) world_p->obj_n);
 
     return O71_OK;
 }
@@ -2976,8 +3052,8 @@ static o71_status_t free_object_index
 {
     A(obj_x < world_p->obj_n);
     world_p->enc_next_free_xa[obj_x] = ENCODE_FREE_OBJECT_SLOT(
-        world_p->free_list_head_x);
-    world_p->free_list_head_x = obj_x;
+        world_p->free_list_head_ex);
+    world_p->free_list_head_ex = obj_x;
     return O71_OK;
 }
 

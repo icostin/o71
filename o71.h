@@ -319,16 +319,11 @@ typedef union
 
 struct o71_mem_obj_s
 {
-    union
-    {
-        o71_ref_t class_r;
-        size_t object_size; // during destroy phase (o71_cleanup()) the class
-        // is replaced with the object size
-    };
+    o71_ref_t class_r;
     union
     {
         o71_ref_count_t ref_n;
-        o71_obj_index_t enc_destroy_next_x;
+        o71_obj_index_t destroy_next_ex;
     };
 };
 
@@ -398,6 +393,10 @@ struct o71_class_s
                           // dynamic fields; 0 for no bag
     size_t fix_field_n;
     uint32_t model;
+    uint32_t rank; /* class ranking: class_class has rank 0,
+                      normal class instances have rank 1, objects from
+                      normal classes that are themselves classes (such as
+                      instances of function_class) have rank 2 and so forth. */
 };
 
 #define O71_SM_MODIFIABLE 0
@@ -571,7 +570,8 @@ struct o71_world_s
         uintptr_t * enc_next_free_xa; // values are (index * 2 + 1) to be distinguished from used entries (pointers to object - aligned to at least 4)
     };
     size_t obj_n;
-    o71_obj_index_t free_list_head_x;
+    o71_obj_index_t free_list_head_ex; // encoded index ~x
+    o71_obj_index_t * free_list_tail_xp;
     o71_obj_index_t destroy_list_head_x; // chained using ~obj_p->ref_n
     o71_allocator_t * allocator_p;
 
@@ -579,7 +579,7 @@ struct o71_world_s
     o71_flow_t root_flow;
 
     o71_mem_obj_t null_object;
-    o71_class_t object_class; // the mother of al that is evil
+    o71_class_t object_class; // the mother of all that is evil
     o71_class_t null_class;
     o71_class_t class_class;
     o71_class_t string_class;
@@ -1158,6 +1158,9 @@ O71_API uint32_t o71_model
  *  Destroys the chain of objects in the destroy chain.
  * can return any error status as relayed from the finish functions of
  * destroyed objects.
+ * The objects are destroyed in the order the appear in the chain.
+ * While finalizing an object other objects may be apended to the chain if
+ * their reference count becomes 0.
  */
 O71_API o71_status_t o71_cleanup
 (
@@ -1381,8 +1384,8 @@ O71_API o71_status_t o71_reg_obj_get_field
  *      intern string representing field name
  *  @param value_r [in]
  *  @retval O71_OK success
- *  @warning 
- *      @a field_istr_r must be an intern string otherwise an assertion will 
+ *  @warning
+ *      @a field_istr_r must be an intern string otherwise an assertion will
  *      occur in checked/debug builds and undefined behaviour in release
  */
 O71_API o71_status_t o71_reg_obj_set_field
@@ -1396,7 +1399,7 @@ O71_API o71_status_t o71_reg_obj_set_field
 /* o71_istr_check ***********************************************************/
 /**
  *  Checks if the given reference points to an internalized string.
- *  @retval O71_OK 
+ *  @retval O71_OK
  *      ref points to intern string
  *  @retval O71_NOT_MEM_OBJ_REF
  *      not a reference to a memory object
