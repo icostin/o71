@@ -702,7 +702,7 @@ enum o71_token_type_e
 
 enum o71_compile_error_e
 {
-    O71_COMPILE_OK = 0,
+    O71_CE_NONE = 0,
     /* parsing stage errors */
     O71_CE_PARSE_BAD_CONTROL_CHAR,
     O71_CE_PARSE_BAD_UTF8_START_BYTE,
@@ -717,6 +717,8 @@ enum o71_compile_error_e
 
     O71_CE_BAD_STMT_AFTER_EXPR,
     O71_CE_BAD_ATOM,
+    O71_CE_EXP_STMT_OR_EOF,
+    O71_CE_EXP_SEMICOLON_AFTER_EXPR,
 };
 
 struct o71_token_s

@@ -846,26 +846,24 @@ static void init_empty_block_stmt
     o71_block_stmt_token_t * parent_block_stmt_p
 );
 
-/*  match_stmt  */
+/*  match_stmt_seq  */
 /**
- *  Matches a statement.
+ *  @param code_p [in]
+ *  @param block_stmt_p [in, out]
+ *      initialized block statement whose stmt list is extended with parsed
+ *      statements
+ *  @param src_p [in]
+ *      source token where to start matching
+ *  @param src_pp [out]
+ *      source token when matching stopped; for syntactically valid code this
+ *      should point on return to EOF or '}'
  */
-static o71_status_t match_stmt
+static o71_status_t match_stmt_seq
 (
     o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * stmt_pp
-);
-
-/*  match_expr  */
-/**
- *  Matches an expression.
- */
-static o71_status_t match_expr
-(
-    o71_code_t * code_p,
-    o71_token_t * in_p,
-    o71_token_t * * expr_pp
+    o71_block_stmt_token_t * block_stmt_p,
+    o71_token_t * src_p,
+    o71_token_t * * src_pp
 );
 
 #if O71_DEBUG
@@ -2752,8 +2750,7 @@ O71_API o71_status_t o71_compile
 )
 {
     o71_status_t os;
-    o71_token_t * crt_token_p;
-    o71_token_t * stmt_token_p;
+    o71_token_t * end_token_p;
 
     code_p->allocator_p = world_p->allocator_p;
     code_p->src_name = src_name;
@@ -2766,6 +2763,18 @@ O71_API o71_status_t o71_compile
     if (os) return os;
 
     init_empty_block_stmt(&code_p->body, NULL);
+    os = match_stmt_seq(code_p, &code_p->body, code_p->token_list, &end_token_p);
+    if (os) { M("ouch: %s", N(os)); return os; }
+    A(end_token_p);
+    if (end_token_p->type != O71_TT_END)
+    {
+        code_p->ce_code = O71_CE_EXP_STMT_OR_EOF;
+        code_p->ce_row = end_token_p->src_row;
+        code_p->ce_col = end_token_p->src_col;
+        code_p->ce_ofs = end_token_p->src_ofs;
+        return O71_COMPILE_ERROR;
+    }
+
     code_p->ce_ofs = 0;
     return O71_OK;
 }
@@ -5076,7 +5085,7 @@ static o71_status_t tokenize_source
     src_a = code_p->src_a;
     src_n = code_p->src_n;
 #define CE(_e) { ce = _e; break; }
-    ce = O71_COMPILE_OK;
+    ce = O71_CE_NONE;
     for (ofs = 0, row = 1, col = 1; ofs < src_n; ofs += chlen)
     {
         if (src_a[ofs] < 0x20)
@@ -5618,6 +5627,84 @@ static void init_empty_block_stmt
     block_stmt_p->var_tail_pp = &block_stmt_p->var_list_p;
 }
 
+/* match_expr ***************************************************************/
+static o71_status_t match_expr
+(
+    o71_code_t * code_p,
+    o71_token_t * * expr_pp,
+    o71_token_t * src_p,
+    o71_token_t * * src_pp
+)
+{
+    P("match_expr: "); dump_token_list(src_p, 8); P(".\n");
+    return O71_TODO;
+}
+
+/* match_stmt ***************************************************************/
+static o71_status_t match_stmt
+(
+    o71_code_t * code_p,
+    o71_token_t * * stmt_pp,
+    o71_token_t * src_p,
+    o71_token_t * * src_pp
+)
+{
+    o71_status_t os;
+    o71_token_t * expr_p;
+
+    P("match_stmt: "); dump_token_list(src_p, 8); P(".\n");
+    switch (src_p->type)
+    {
+    case O71_TT_RETURN:
+    case O71_TT_BREAK:
+    case O71_TT_GOTO:
+    case O71_TT_IF:
+    case O71_TT_WHILE:
+    case O71_TT_DO:
+    case O71_TT_FOR:
+    case O71_TT_SWITCH:
+    case O71_TT_CASE:
+        return O71_TODO;
+    default:
+        os = match_expr(code_p, &expr_p, src_p, &src_p);
+        if (os) { M("ouch: %s", N(os)); return os; }
+        if (src_p->type != O71_TT_SEMICOLON)
+        {
+            code_p->ce_code = O71_CE_EXP_SEMICOLON_AFTER_EXPR;
+            code_p->ce_ofs = src_p->src_ofs;
+            code_p->ce_row = src_p->src_row;
+            code_p->ce_col = src_p->src_col;
+            return O71_COMPILE_ERROR;
+        }
+        *src_pp = src_p->next;
+        expr_p->base_type = expr_p->type;
+        expr_p->type = O71_TT_STMT;
+        *stmt_pp = expr_p;
+        return O71_OK;
+    }
+
+    return O71_TODO;
+}
+
+/* match_stmt_seq ***********************************************************/
+static o71_status_t match_stmt_seq
+(
+    o71_code_t * code_p,
+    o71_block_stmt_token_t * block_stmt_p,
+    o71_token_t * src_p,
+    o71_token_t * * src_pp
+)
+{
+    o71_status_t os;
+    o71_token_t * stmt_p;
+
+    P("match_stmt_seq: "); dump_token_list(src_p, 8); P(".\n");
+
+    os = match_stmt(code_p, &stmt_p, src_p, &src_p);
+    if (os) return os;
+    return O71_OK;
+}
+
 
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN
@@ -6039,6 +6126,7 @@ static int compile_error_msg (o71_code_t const * code_p, char * buf, size_t len)
         snprintf(buf, len, "expecting ';' or identifier after expression "
                  "starting a statement");
         break;
+
     case O71_CE_BAD_ATOM:
         snprintf(buf, len, "expecting identifier, string, or integer");
     default:
