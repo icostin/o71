@@ -212,9 +212,9 @@ typedef struct o71_world_s o71_world_t;
 typedef struct o71_var_spec_s o71_var_spec_t;
 typedef struct o71_expr_list_token_s o71_expr_list_token_t;
 typedef struct o71_func_token_s o71_func_token_t;
-typedef struct o71_stmt_list_token_s o71_stmt_list_token_t;
 typedef struct o71_block_stmt_token_s o71_block_stmt_token_t;
 typedef struct o71_alloc_header_s o71_alloc_header_t;
+typedef enum o71_token_type_e o71_token_type_t;
 
 /* o71_ref_t ****************************************************************/
 /**
@@ -787,14 +787,6 @@ struct o71_func_token_s
     o71_block_stmt_token_t * body_p;
 };
 
-struct o71_stmt_list_token_s
-{
-    o71_token_t base;
-    o71_token_t * head_p;
-    o71_token_t * * tail_pp;
-    o71_kvbag_t locals;
-};
-
 struct o71_var_spec_s
 {
     o71_var_spec_t * next;
@@ -806,8 +798,8 @@ struct o71_block_stmt_token_s
 {
     o71_token_t base;
     o71_block_stmt_token_t * parent_block_stmt_p;
-    o71_stmt_list_token_t * stmt_list_p;
-    o71_stmt_list_token_t * * stmt_tail_pp;
+    o71_token_t * stmt_list_p;
+    o71_token_t * * stmt_tail_pp;
     o71_var_spec_t * var_list_p;
     o71_var_spec_t * * var_tail_pp;
 };

@@ -863,7 +863,8 @@ static o71_status_t match_stmt_seq
     o71_code_t * code_p,
     o71_block_stmt_token_t * block_stmt_p,
     o71_token_t * src_p,
-    o71_token_t * * src_pp
+    o71_token_t * * src_pp,
+    o71_token_type_t end_type
 );
 
 #if O71_DEBUG
@@ -2763,7 +2764,8 @@ O71_API o71_status_t o71_compile
     if (os) return os;
 
     init_empty_block_stmt(&code_p->body, NULL);
-    os = match_stmt_seq(code_p, &code_p->body, code_p->token_list, &end_token_p);
+    os = match_stmt_seq(code_p, &code_p->body, code_p->token_list, &end_token_p,
+                        O71_TT_END);
     if (os) { M("ouch: %s", N(os)); return os; }
     A(end_token_p);
     if (end_token_p->type != O71_TT_END)
@@ -5631,6 +5633,7 @@ static void init_empty_block_stmt
 static o71_status_t match_expr
 (
     o71_code_t * code_p,
+    o71_token_type_t expr_type,
     o71_token_t * * expr_pp,
     o71_token_t * src_p,
     o71_token_t * * src_pp
@@ -5666,7 +5669,7 @@ static o71_status_t match_stmt
     case O71_TT_CASE:
         return O71_TODO;
     default:
-        os = match_expr(code_p, &expr_p, src_p, &src_p);
+        os = match_expr(code_p, O71_TT_EXPR, &expr_p, src_p, &src_p);
         if (os) { M("ouch: %s", N(os)); return os; }
         if (src_p->type != O71_TT_SEMICOLON)
         {
@@ -5682,8 +5685,6 @@ static o71_status_t match_stmt
         *stmt_pp = expr_p;
         return O71_OK;
     }
-
-    return O71_TODO;
 }
 
 /* match_stmt_seq ***********************************************************/
@@ -5692,7 +5693,8 @@ static o71_status_t match_stmt_seq
     o71_code_t * code_p,
     o71_block_stmt_token_t * block_stmt_p,
     o71_token_t * src_p,
-    o71_token_t * * src_pp
+    o71_token_t * * src_pp,
+    o71_token_type_t end_type
 )
 {
     o71_status_t os;
@@ -5700,11 +5702,16 @@ static o71_status_t match_stmt_seq
 
     P("match_stmt_seq: "); dump_token_list(src_p, 8); P(".\n");
 
-    os = match_stmt(code_p, &stmt_p, src_p, &src_p);
-    if (os) return os;
+    while (src_p->type != end_type)
+    {
+        os = match_stmt(code_p, &stmt_p, src_p, &src_p);
+        if (os) return os;
+        *block_stmt_p->stmt_tail_pp = stmt_p;
+        block_stmt_p->stmt_tail_pp = &stmt_p->next;
+    }
+    *src_pp = src_p;
     return O71_OK;
 }
-
 
 /* O71_MAIN *****************************************************************/
 #if O71_MAIN
