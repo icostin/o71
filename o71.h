@@ -719,6 +719,7 @@ enum o71_compile_error_e
     O71_CE_BAD_ATOM,
     O71_CE_EXP_STMT_OR_EOF,
     O71_CE_EXP_SEMICOLON_AFTER_EXPR,
+    O71_CE_EXP_PAREN_CLOSE_AFTER_EXPR,
 };
 
 struct o71_token_s

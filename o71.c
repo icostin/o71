@@ -4997,8 +4997,9 @@ static o71_status_t free_token
     o71_cond_expr_token_t * cond_expr_p;
 
     if (token_p->type < min_tt) return O71_OK;
-    //M("free_token %p(type=%s)", token_p, ttname_a[token_p->type]);
-    switch (token_p->type)
+    M("free_token %p(base_type=%s, type=%s)", 
+      token_p, ttname_a[token_p->base_type], ttname_a[token_p->type]);
+    switch (token_p->base_type)
     {
     case O71_TT_STRING:
         str_token_p = (o71_str_token_t *) token_p;
@@ -5189,7 +5190,7 @@ static o71_status_t tokenize_source
             ALLOC(os, code_p->allocator_p, id_token_p);
             if (os) return os;
             token_p = &id_token_p->base;
-            token_p->type = O71_TT_IDENTIFIER;
+            token_p->type = token_p->base_type = O71_TT_IDENTIFIER;
             id_token_p->a = src_a + src_ofs;
             id_token_p->n = ofs - src_ofs;
         }
@@ -5224,7 +5225,7 @@ static o71_status_t tokenize_source
             ALLOC(os, code_p->allocator_p, int_token_p);
             if (os) return os;
             token_p = &int_token_p->base;
-            token_p->type = O71_TT_INTEGER;
+            token_p->type = token_p->base_type = O71_TT_INTEGER;
             int_token_p->val = num;
         }
         else if (ch == '"')
@@ -5318,7 +5319,7 @@ static o71_status_t tokenize_source
             ALLOC(os, code_p->allocator_p, str_token_p);
             if (os) return os;
             token_p = &str_token_p->base;
-            token_p->type = O71_TT_STRING;
+            token_p->type = token_p->base_type = O71_TT_STRING;
             str_token_p->n = 0;
             os = redim(allocator_p, (void * *) &str_token_p->a,
                        &str_token_p->n, str_n + 1, 1);
@@ -5531,7 +5532,7 @@ static o71_status_t tokenize_source
             }
             ALLOC(os, code_p->allocator_p, token_p);
             if (os) return os;
-            token_p->type = type;
+            token_p->type = token_p->base_type = type;
         }
 
         if (ce) break;
@@ -5562,7 +5563,7 @@ static o71_status_t tokenize_source
     token_p->src_len = 0;
     token_p->src_row = row;
     token_p->src_col = col;
-    token_p->type = O71_TT_END;
+    token_p->type = token_p->base_type = O71_TT_END;
     token_p->next = NULL;
     *code_p->token_tail = token_p;
     code_p->token_tail = &token_p->next;
@@ -5639,8 +5640,186 @@ static o71_status_t match_expr
     o71_token_t * * src_pp
 )
 {
-    P("match_expr: "); dump_token_list(src_p, 8); P(".\n");
-    return O71_TODO;
+    o71_token_t * expr_p;
+    o71_token_t * lookup_p;
+    o71_unary_expr_token_t * unary_expr_p;
+    o71_status_t os = O71_OK;
+
+    P("match_expr(%s): ", ttname_a[expr_type]); 
+    dump_token_list(src_p, 8); P(".\n");
+    do
+    {
+        P("loop match_expr(%s): ", ttname_a[expr_type]); 
+        dump_token_list(src_p, 8); P(".\n");
+        lookup_p = src_p->next;
+        switch (src_p->type)
+        {
+        case O71_TT_IDENTIFIER:
+        case O71_TT_STRING:
+        case O71_TT_INTEGER:
+            ALLOC(os, code_p->allocator_p, unary_expr_p);
+            if (os) { M("ouch: %s", N(os)); break; }
+            unary_expr_p->base.next = src_p->next;
+            unary_expr_p->sub_expr_p = src_p;
+            src_p = &unary_expr_p->base;
+            src_p->type = src_p->base_type = O71_TT_ATOM_EXPR;
+            break;
+            
+        case O71_TT_PAREN_OPEN:
+            os = match_expr(code_p, O71_TT_EXPR, &expr_p, src_p->next, &src_p);
+            if (os) { M("ouch: %s", N(os)); break; }
+            if (src_p->type != O71_TT_PAREN_CLOSE)
+            {
+                code_p->ce_code = O71_CE_EXP_PAREN_CLOSE_AFTER_EXPR;
+                code_p->ce_ofs = src_p->src_ofs;
+                code_p->ce_row = src_p->src_row;
+                code_p->ce_col = src_p->src_col;
+                os = O71_COMPILE_ERROR;
+                break;
+            }
+            expr_p->next = src_p->next;
+            src_p = expr_p;
+            break;
+
+        case O71_TT_ATOM_EXPR:
+            src_p->type = O71_TT_POSTFIX_EXPR;
+            break;
+            
+        case O71_TT_POSTFIX_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_SQUARE_BRACKET_OPEN:
+            case O71_TT_PAREN_OPEN:
+            case O71_TT_DOT:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_PREFIX_EXPR;
+                break;
+            }
+            os = O71_TODO;
+            break;
+
+        case O71_TT_PREFIX_EXPR:
+            src_p->type = O71_TT_EXP_EXPR;
+            break;
+
+        case O71_TT_EXP_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_LESS_LESS:
+            case O71_TT_GREATER_GREATER:
+            case O71_TT_STAR_STAR:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_MUL_EXPR;
+                break;
+            }
+            break;
+
+        case O71_TT_MUL_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_STAR:
+            case O71_TT_SLASH:
+            case O71_TT_PERCENT:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_AND_EXPR;
+                break;
+            }
+            break;
+
+        case O71_TT_AND_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_AMPERSAND:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_XOR_EXPR;
+                break;
+            }
+            break;
+
+        case O71_TT_XOR_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_CARET:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_OR_EXPR;
+                break;
+            }
+            break;
+
+        case O71_TT_OR_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_PIPE:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_ADD_EXPR;
+                break;
+            }
+            break;
+
+        case O71_TT_ADD_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_PLUS:
+            case O71_TT_MINUS:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_CMP_EXPR;
+                break;
+            }
+            break;
+
+        case O71_TT_CMP_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_LESS:
+            case O71_TT_LESS_EQUAL:
+            case O71_TT_GREATER:
+            case O71_TT_GREATER_EQUAL:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_EQU_EXPR;
+                break;
+            }
+            break;
+        case O71_TT_EQU_EXPR:
+        case O71_TT_LOGIC_AND_EXPR:
+        case O71_TT_LOGIC_XOR_EXPR:
+        case O71_TT_LOGIC_OR_EXPR:
+        case O71_TT_COND_EXPR:
+        case O71_TT_EXPR:
+        default:
+            os = O71_TODO;
+            break;
+        }
+        if (os)
+        {
+            o71_status_t osf;
+            // free src_p if needed
+            M("failing match_expr with status %s", N(os));
+            osf = free_token(code_p, src_p, O71_TT__COMPLEX);
+            if (osf) return osf;
+            return os;
+        }
+    }
+    while (src_p->type < expr_type);
+    *expr_pp = src_p;
+    *src_pp = src_p->next;
+
+    return O71_OK;
 }
 
 /* match_stmt ***************************************************************/
