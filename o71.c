@@ -970,6 +970,7 @@ static char const * ttname_a[O71_TT__COUNT] =
     "'<<'",
     "'>>'",
     "'&&'",
+    "'^^'",
     "'||'",
     "'=='",
     "'!='",
@@ -987,6 +988,7 @@ static char const * ttname_a[O71_TT__COUNT] =
     "'^='",
     "'**='",
     "'&&='",
+    "'^^='",
     "'||='",
     "'return'",
     "'break'",
@@ -1004,6 +1006,7 @@ static char const * ttname_a[O71_TT__COUNT] =
     "source",
     "stmt_seq",
     "stmt",
+    "expr_stmt",
     "decl_start",
     "block_stmt",
     "if_stmt_start",
@@ -5415,8 +5418,21 @@ static o71_status_t tokenize_source
                 else type = O71_TT_PERCENT;
                 break;
             case '^':
-                if (nch == '=') { ++ofs; type = O71_TT_CARET_EQUAL; }
-                else type = O71_TT_CARET;
+                switch (nch)
+                {
+                case '^':
+                    if (++ofs < src_n && src_a[ofs] == '=')
+                    {
+                        ++ofs;
+                        type = O71_TT_CARET_CARET_EQUAL;
+                        break;
+                    }
+                    else type = O71_TT_CARET_CARET;
+                    break;
+                case '=': ++ofs; type = O71_TT_CARET_EQUAL; break;
+                default:
+                    type = O71_TT_CARET;
+                }
                 break;
             case '&':
                 switch (nch)
@@ -5431,6 +5447,8 @@ static o71_status_t tokenize_source
                     else type = O71_TT_AMPERSAND_AMPERSAND;
                     break;
                 case '=': ++ofs; type = O71_TT_AMPERSAND_EQUAL; break;
+                default:
+                    type = O71_TT_AMPERSAND;
                 }
                 break;
             case '|':
@@ -5446,6 +5464,8 @@ static o71_status_t tokenize_source
                     else type = O71_TT_PIPE_PIPE;
                     break;
                 case '=': ++ofs; type = O71_TT_PIPE_EQUAL; break;
+                default:
+                    type = O71_TT_PIPE;
                 }
                 break;
             case '+':
@@ -5650,8 +5670,9 @@ static o71_status_t match_expr
     do
     {
         P("loop match_expr(%s): ", ttname_a[expr_type]); 
-        dump_token_list(src_p, 8); P(".\n");
+        dump_token_list(src_p, 8); 
         lookup_p = src_p->next;
+        P(". lookup: %s.\n", ttname_a[lookup_p->type]);
         switch (src_p->type)
         {
         case O71_TT_IDENTIFIER:
@@ -5693,11 +5714,27 @@ static o71_status_t match_expr
             case O71_TT_DOT:
                 os = O71_TODO;
                 break;
+            case O71_TT_EQUAL:
+            case O71_TT_PLUS_EQUAL:
+            case O71_TT_MINUS_EQUAL:
+            case O71_TT_STAR_EQUAL:
+            case O71_TT_SLASH_EQUAL:
+            case O71_TT_PERCENT_EQUAL:
+            case O71_TT_AMPERSAND_EQUAL:
+            case O71_TT_PIPE_EQUAL:
+            case O71_TT_CARET_EQUAL:
+            case O71_TT_STAR_STAR_EQUAL:
+            case O71_TT_LESS_LESS_EQUAL:
+            case O71_TT_GREATER_EQUAL:
+            case O71_TT_AMPERSAND_AMPERSAND_EQUAL:
+            case O71_TT_CARET_CARET_EQUAL:
+            case O71_TT_PIPE_PIPE_EQUAL:
+                os = O71_TODO;
+                break;
             default:
                 src_p->type = O71_TT_PREFIX_EXPR;
                 break;
             }
-            os = O71_TODO;
             break;
 
         case O71_TT_PREFIX_EXPR:
@@ -5795,12 +5832,63 @@ static o71_status_t match_expr
                 break;
             }
             break;
+
         case O71_TT_EQU_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_EQUAL_EQUAL:
+            case O71_TT_EXCLAMATION_EQUAL:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_LOGIC_AND_EXPR;
+                break;
+            }
+            break;
+
         case O71_TT_LOGIC_AND_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_AMPERSAND_AMPERSAND:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_LOGIC_XOR_EXPR;
+                break;
+            }
+            break;
+
         case O71_TT_LOGIC_XOR_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_CARET_CARET:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_LOGIC_OR_EXPR;
+                break;
+            }
+            break;
+
         case O71_TT_LOGIC_OR_EXPR:
+            switch (lookup_p->type)
+            {
+            case O71_TT_PIPE_PIPE:
+                os = O71_TODO;
+                break;
+            case O71_TT_QUESTION:
+                os = O71_TODO;
+                break;
+            default:
+                src_p->type = O71_TT_COND_EXPR;
+                break;
+            }
+            break;
+
         case O71_TT_COND_EXPR:
-        case O71_TT_EXPR:
+            src_p->type = O71_TT_EXPR;
+            break;
+
         default:
             os = O71_TODO;
             break;
@@ -5818,6 +5906,8 @@ static o71_status_t match_expr
     while (src_p->type < expr_type);
     *expr_pp = src_p;
     *src_pp = src_p->next;
+    P("matched expr: ");
+    dump_token_list(src_p, 8); P(".\n");
 
     return O71_OK;
 }
@@ -5850,19 +5940,26 @@ static o71_status_t match_stmt
     default:
         os = match_expr(code_p, O71_TT_EXPR, &expr_p, src_p, &src_p);
         if (os) { M("ouch: %s", N(os)); return os; }
-        if (src_p->type != O71_TT_SEMICOLON)
+        switch (src_p->type)
         {
+        case O71_TT_SEMICOLON:
+            *src_pp = src_p->next;
+            expr_p->base_type = expr_p->type;
+            expr_p->type = O71_TT_EXPR_STMT;
+            *stmt_pp = expr_p;
+            return O71_OK;
+
+        case O71_TT_IDENTIFIER:
+            /* either function declaration, either variable declaration */
+            return O71_TODO;
+
+        default:
             code_p->ce_code = O71_CE_EXP_SEMICOLON_AFTER_EXPR;
             code_p->ce_ofs = src_p->src_ofs;
             code_p->ce_row = src_p->src_row;
             code_p->ce_col = src_p->src_col;
             return O71_COMPILE_ERROR;
         }
-        *src_pp = src_p->next;
-        expr_p->base_type = expr_p->type;
-        expr_p->type = O71_TT_STMT;
-        *stmt_pp = expr_p;
-        return O71_OK;
     }
 }
 
