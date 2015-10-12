@@ -3304,8 +3304,8 @@ static o71_status_t int_add_call
         return O71_OK;
     }
     os = alloc_exc(flow_p->world_p, O71R_TYPE_EXC_CLASS, &exc_ox);
-    flow_p->exc_r = O71_MOX_TO_REF(exc_ox);
     if (os) return os;
+    flow_p->exc_r = O71_MOX_TO_REF(exc_ox);
     return O71_EXC;
     // // TODO: handle int + big_int or big_int + int
     // flow_p->value_r = O71R_NULL;
@@ -4272,7 +4272,7 @@ static o71_status_t kvbag_rbtree_insert
     o71_kvnode_t * grandpa;
     o71_kvnode_t * uncle;
     o71_kvnode_t * tmp;
-    o71_kvnode_t * node;
+    o71_kvnode_t * node = NULL;
     o71_status_t os;
 
     M2("rbtree insert (k=obref_%lX, v=obref_%lX)", key_r, value_r);
@@ -5102,7 +5102,7 @@ static o71_status_t tokenize_source
                 col = 1;
                 if (ofs + 1 < src_n && src_a[ofs + 1] == '\n')
                 {
-                    chlen += 2;
+                    chlen = 2;
                     continue;
                 }
                 chlen = 1;
@@ -5550,11 +5550,11 @@ static o71_status_t tokenize_source
             default:
                 CE(O71_CE_PARSE_BAD_CHAR);
             }
+            if (ce) break;
             ALLOC(os, code_p->allocator_p, token_p);
             if (os) return os;
             token_p->type = token_p->base_type = type;
         }
-
         if (ce) break;
         token_p->src_ofs = src_ofs;
         token_p->src_row = row;
